@@ -1,4 +1,4 @@
-package service
+package utils
 
 import (
 	"crypto/hmac"
@@ -28,13 +28,13 @@ func GenerateSessionHash(userID, challengeID, password string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func setSession(key string, session *models.Session) {
+func SetSession(key string, session *models.Session) {
 	sessionMu.Lock()
 	activeSessions[key] = session
 	sessionMu.Unlock()
 }
 
-func deleteSession(key string) {
+func DeleteSession(key string) {
 	sessionMu.Lock()
 	delete(activeSessions, key)
 	sessionMu.Unlock()

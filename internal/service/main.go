@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lijuuu/ChallengeWssManagerService/internal/models"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/utils"
 
 	"github.com/gorilla/websocket"
 )
@@ -237,7 +238,7 @@ func (cw *ChallengeWrapper) CleanupRoutine() {
 		for userID, session := range cw.Challenge.Sessions {
 			if time.Since(session.LastActive) > models.SessionTimeout {
 				delete(cw.Challenge.Sessions, userID)
-				deleteSession(userID + cw.Challenge.ChallengeID)
+				utils.DeleteSession(userID + cw.Challenge.ChallengeID)
 
 				if conn, exists := cw.Challenge.WSClients[userID]; exists {
 					conn.Close()
@@ -358,7 +359,7 @@ func JoinChallenge(challengeID, userID, password, sessionHash string) (string, e
 
 	newSessionHash := sessionHash
 	if newSessionHash == "" {
-		newSessionHash = GenerateSessionHash(userID, challengeID, password)
+		newSessionHash = utils.GenerateSessionHash(userID, challengeID, password)
 	}
 
 	wrapper.Challenge.Participants[userID] = &models.ParticipantMetadata{
@@ -381,7 +382,7 @@ func JoinChallenge(challengeID, userID, password, sessionHash string) (string, e
 		SessionHash: newSessionHash,
 	}
 
-	setSession(userID+challengeID, session)
+	utils.SetSession(userID+challengeID, session)
 
 	wrapper.Challenge.Sessions[userID] = session
 	return newSessionHash, nil
@@ -404,7 +405,7 @@ func ReconnectChallenge(challengeID, userID, sessionHash string) error {
 		return errors.New("no active session found")
 	}
 
-	if !ValidateSessionHash(userID, challengeID, wrapper.Challenge.Password, sessionHash) {
+	if !utils.ValidateSessionHash(userID, challengeID, wrapper.Challenge.Password, sessionHash) {
 		return errors.New("invalid session hash")
 	}
 
@@ -558,7 +559,7 @@ func ForfeitChallenge(challengeID, userID, sessionHash string) error {
 		delete(wrapper.Challenge.WSClients, userID)
 	}
 
-	deleteSession(userID + wrapper.Challenge.ChallengeID)
+	utils.DeleteSession(userID + wrapper.Challenge.ChallengeID)
 
 	wrapper.Challenge.EventChan <- models.Event{
 		Type: models.EventUserForfeited,
@@ -589,7 +590,7 @@ func EndChallenge(challengeID string) error {
 
 	wrapper.Challenge.Status = models.StatusFinished
 	for userID := range wrapper.Challenge.Sessions {
-		deleteSession(userID + wrapper.Challenge.ChallengeID)
+		utils.DeleteSession(userID + wrapper.Challenge.ChallengeID)
 	}
 
 	for userID, conn := range wrapper.Challenge.WSClients {
@@ -634,7 +635,7 @@ func DeleteChallenge(challengeID, userID, sessionHash string) error {
 
 	wrapper.Challenge.Status = models.StatusCancelled
 	for userID := range wrapper.Challenge.Sessions {
-		deleteSession(userID + wrapper.Challenge.ChallengeID)
+		utils.DeleteSession(userID + wrapper.Challenge.ChallengeID)
 	}
 
 	for userID, conn := range wrapper.Challenge.WSClients {
@@ -753,7 +754,7 @@ func (cw *ChallengeWrapper) handleWebSocketMessages(userID string, conn *websock
 			delete(cw.Challenge.WSClients, userID)
 			delete(cw.Challenge.Sessions, userID)
 			delete(cw.Challenge.Participants, userID)
-			deleteSession(userID + cw.Challenge.ChallengeID)
+			utils.DeleteSession(userID + cw.Challenge.ChallengeID)
 			cw.Challenge.EventChan <- models.Event{
 				Type: models.EventUserLeft,
 				Payload: models.UserLeftPayload{
@@ -831,7 +832,7 @@ func (cw *ChallengeWrapper) handleWebSocketMessages(userID string, conn *websock
 				}
 				continue
 			}
-			if payload.UserID != userID || !ValidateSessionHash(userID, cw.Challenge.ChallengeID, cw.Challenge.Password, payload.SessionHash) {
+			if payload.UserID != userID || !utils.ValidateSessionHash(userID, cw.Challenge.ChallengeID, cw.Challenge.Password, payload.SessionHash) {
 				log.Printf("Unauthorized start attempt by user %s", userID)
 				cw.Challenge.EventChan <- models.Event{
 					Type: models.EventError,
@@ -865,7 +866,7 @@ func (cw *ChallengeWrapper) handleWebSocketMessages(userID string, conn *websock
 				}
 				continue
 			}
-			if payload.UserID != userID || !ValidateSessionHash(userID, cw.Challenge.ChallengeID, cw.Challenge.Password, payload.SessionHash) {
+			if payload.UserID != userID || !utils.ValidateSessionHash(userID, cw.Challenge.ChallengeID, cw.Challenge.Password, payload.SessionHash) {
 				log.Printf("Unauthorized end attempt by user %s", userID)
 				cw.Challenge.EventChan <- models.Event{
 					Type: models.EventError,
@@ -899,7 +900,7 @@ func (cw *ChallengeWrapper) handleWebSocketMessages(userID string, conn *websock
 				}
 				continue
 			}
-			if payload.UserID != userID || !ValidateSessionHash(userID, cw.Challenge.ChallengeID, cw.Challenge.Password, payload.SessionHash) {
+			if payload.UserID != userID || !utils.ValidateSessionHash(userID, cw.Challenge.ChallengeID, cw.Challenge.Password, payload.SessionHash) {
 				log.Printf("Unauthorized delete attempt by user %s", userID)
 				cw.Challenge.EventChan <- models.Event{
 					Type: models.EventError,
@@ -934,7 +935,7 @@ func (cw *ChallengeWrapper) handleWebSocketMessages(userID string, conn *websock
 				continue
 			}
 			_, exists := cw.Challenge.Sessions[userID]
-			if !exists || !ValidateSessionHash(userID, cw.Challenge.ChallengeID, cw.Challenge.Password, payload.SessionHash) {
+			if !exists || !utils.ValidateSessionHash(userID, cw.Challenge.ChallengeID, cw.Challenge.Password, payload.SessionHash) {
 				log.Printf("Unauthorized problem submission attempt by user %s", userID)
 				cw.Challenge.EventChan <- models.Event{
 					Type: models.EventError,
@@ -968,7 +969,7 @@ func (cw *ChallengeWrapper) handleWebSocketMessages(userID string, conn *websock
 				}
 				continue
 			}
-			if payload.UserID != userID || !ValidateSessionHash(userID, cw.Challenge.ChallengeID, cw.Challenge.Password, payload.SessionHash) {
+			if payload.UserID != userID || !utils.ValidateSessionHash(userID, cw.Challenge.ChallengeID, cw.Challenge.Password, payload.SessionHash) {
 				log.Printf("Unauthorized forfeit attempt by user %s", userID)
 				cw.Challenge.EventChan <- models.Event{
 					Type: models.EventError,
