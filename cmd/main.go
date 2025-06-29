@@ -3,62 +3,60 @@ package main
 import (
 	"log"
 	"net"
+	"net/http"
 
+	"github.com/gin-gonic/gin"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/config"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/db"
-	"github.com/lijuuu/ChallengeWssManagerService/internal/handlers"
+	// "github.com/lijuuu/ChallengeWssManagerService/internal/http"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/repo"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/service"
 	challengepb "github.com/lijuuu/GlobalProtoXcode/ChallengeService"
 	"google.golang.org/grpc"
 )
 
-const (
-	grpcPort = ":50057"
-	httpPort = ":8081"
-)
-
 func main() {
-	//start gRPC server in a separate goroutine
-	go runGRPCServer()
-
-	//load configuration
+	// Load config
 	cfg := config.LoadConfig()
 
-	//start HTTP server
-	runHTTPServer(&cfg)
-}
-
-func runGRPCServer() {
-	listener, err := net.Listen("tcp", grpcPort)
+	// Init DB
+	psql, err := db.InitDB(&cfg)
 	if err != nil {
-		log.Fatalf("Failed to listen on port %s: %v", grpcPort, err)
+		log.Fatalf("Failed to init PostgreSQL: %v", err)
 	}
 
-	challengeSvc := service.NewChallengeService()
+	// Init repo and service
+	challengeRepo := repo.NewPSQLRepository(psql)
+	challengeService := service.NewChallengeService(challengeRepo)
+
+	// gRPC in goroutine
+	go runGRPCServer(&cfg, challengeService)
+
+	// HTTP using Gin
+	runHTTPServer(&cfg, challengeService)
+}
+
+func runGRPCServer(cfg *config.Config, svc challengepb.ChallengeServiceServer) {
+	lis, err := net.Listen("tcp", cfg.ChallengeGRPCPort)
+	if err != nil {
+		log.Fatalf("gRPC listen failed: %v", err)
+	}
+
 	grpcServer := grpc.NewServer()
-	challengepb.RegisterChallengeServiceServer(grpcServer, challengeSvc)
+	challengepb.RegisterChallengeServiceServer(grpcServer, svc)
 
-	log.Printf("gRPC server listening on %s", grpcPort)
-	if err := grpcServer.Serve(listener); err != nil {
-		log.Fatalf("Failed to serve gRPC: %v", err)
+	log.Printf("gRPC server on %s", cfg.ChallengeGRPCPort)
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("gRPC serve error: %v", err)
 	}
 }
 
-func runHTTPServer(cfg *config.Config) {
-	//initialize database
-	dbInstance, err := db.InitDB(cfg)
-	if err != nil {
-		log.Fatalf("Failed to initialize PostgreSQL DB: %v", err)
-	}
+func runHTTPServer(cfg *config.Config, svc *service.ChallengeService) {
+	r := gin.Default()
+	// http.RegisterRoutes(r, svc)
 
-	//initialize repository
-	_ = repo.NewPSQLRepository(dbInstance)
-
-	//pass to service
-
-	//start HTTP server
-	if err := handlers.StartServer(httpPort); err != nil {
-		log.Fatalf("HTTP server failed: %v", err)
+	log.Printf("HTTP server on %s", cfg.ChallengeHTTPPort)
+	if err := http.ListenAndServe(cfg.ChallengeHTTPPort, r); err != nil {
+		log.Fatalf("HTTP serve error: %v", err)
 	}
 }

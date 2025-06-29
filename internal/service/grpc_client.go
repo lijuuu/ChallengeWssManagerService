@@ -4,15 +4,19 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/lijuuu/ChallengeWssManagerService/internal/repo"
 	challengeService "github.com/lijuuu/GlobalProtoXcode/ChallengeService"
 )
 
 type ChallengeService struct {
+	repo *repo.PSQLRepository
 	challengeService.UnimplementedChallengeServiceServer
 }
 
-func NewChallengeService() *ChallengeService {
-	return &ChallengeService{}
+func NewChallengeService(repo *repo.PSQLRepository) *ChallengeService {
+	return &ChallengeService{
+		repo: repo,
+	}
 }
 
 func (s *ChallengeService) PushSubmissionStatus(ctx context.Context, req *challengeService.PushSubmissionStatusRequest) (*challengeService.PushSubmissionStatusResponse, error) {
@@ -22,5 +26,3 @@ func (s *ChallengeService) PushSubmissionStatus(ctx context.Context, req *challe
 		Success: true,
 	}, nil
 }
-
-
