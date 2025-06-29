@@ -50,22 +50,28 @@ type ChallengeConfig struct {
 }
 
 type Challenge struct {
-	ChallengeID   string
-	CreatorID     string
-	Title         string
-	IsPrivate     bool
-	Password      string
-	Status        ChallengeStatus
-	ProblemIDs    []string
-	TimeLimit     time.Duration
-	StartTime     time.Time
-	Participants  map[string]*ParticipantMetadata
-	Leaderboard   []*LeaderboardEntry
-	Sessions      map[string]*Session
-	Config        ChallengeConfig
-	WSClients     map[string]*websocket.Conn
-	MU            sync.RWMutex
-	EventChan     chan Event
+	ChallengeID  string
+	CreatorID    string
+	Title        string
+	IsPrivate    bool
+	Password     string
+	Status       ChallengeStatus
+	ProblemIDs   []string
+	TimeLimit    time.Duration
+	StartTime    time.Time
+	Participants map[string]*ParticipantMetadata
+	// Submissions maps userID -> problemID -> struct{ SubmissionID string; Points int }
+	Submissions map[string]map[string]struct {
+		SubmissionID string
+		TimeTaken time.Duration
+		Points       int
+	}
+	Leaderboard []*LeaderboardEntry
+	Sessions    map[string]*Session
+	Config      ChallengeConfig
+	WSClients   map[string]*websocket.Conn
+	MU          sync.RWMutex
+	EventChan   chan Event
 }
 
 type ParticipantMetadata struct {
@@ -91,15 +97,15 @@ type LeaderboardEntry struct {
 }
 
 type CreateChallengeRequest struct {
-	UserID             string                         `json:"user_id"`
-	Title              string                         `json:"title"`
-	IsPrivate          bool                           `json:"is_private"`
-	Password           string                         `json:"password"`
-	TimeLimit          int                            `json:"time_limit"` 
-	MaxUsers           int                            `json:"max_users"`
-	MaxEasyQuestions   int                            `json:"max_easy_questions"`
-	MaxMediumQuestions int                            `json:"max_medium_questions"`
-	MaxHardQuestions   int                            `json:"max_hard_questions"`
+	UserID             string                          `json:"user_id"`
+	Title              string                          `json:"title"`
+	IsPrivate          bool                            `json:"is_private"`
+	Password           string                          `json:"password"`
+	TimeLimit          int                             `json:"time_limit"`
+	MaxUsers           int                             `json:"max_users"`
+	MaxEasyQuestions   int                             `json:"max_easy_questions"`
+	MaxMediumQuestions int                             `json:"max_medium_questions"`
+	MaxHardQuestions   int                             `json:"max_hard_questions"`
 	InitialQuestions   map[QuestionDifficulty][]string `json:"initial_questions"`
 }
 

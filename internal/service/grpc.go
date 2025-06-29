@@ -22,3 +22,5 @@ func (s *ChallengeService) PushSubmissionStatus(ctx context.Context, req *challe
 		Success: true,
 	}, nil
 }
+
+

@@ -4,37 +4,61 @@ import (
 	"log"
 	"net"
 
+	"github.com/lijuuu/ChallengeWssManagerService/internal/config"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/db"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/handlers"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/repo"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/service"
-	challengeService "github.com/lijuuu/GlobalProtoXcode/ChallengeService"
+	challengepb "github.com/lijuuu/GlobalProtoXcode/ChallengeService"
 	"google.golang.org/grpc"
 )
 
-func startGRPCServer() {
-	lis, err := net.Listen("tcp", ":50057")
+const (
+	grpcPort = ":50057"
+	httpPort = ":8081"
+)
+
+func main() {
+	//start gRPC server in a separate goroutine
+	go runGRPCServer()
+
+	//load configuration
+	cfg := config.LoadConfig()
+
+	//start HTTP server
+	runHTTPServer(&cfg)
+}
+
+func runGRPCServer() {
+	listener, err := net.Listen("tcp", grpcPort)
 	if err != nil {
-		log.Fatalf("Failed to listen on port 50057: %v", err)
+		log.Fatalf("Failed to listen on port %s: %v", grpcPort, err)
 	}
 
-	serviceInstance := service.NewChallengeService()
-
+	challengeSvc := service.NewChallengeService()
 	grpcServer := grpc.NewServer()
+	challengepb.RegisterChallengeServiceServer(grpcServer, challengeSvc)
 
-	challengeService.RegisterChallengeServiceServer(grpcServer,serviceInstance)
-	
-	log.Println("gRPC server listening on :50057")
-	if err := grpcServer.Serve(lis); err != nil {
+	log.Printf("gRPC server listening on %s", grpcPort)
+	if err := grpcServer.Serve(listener); err != nil {
 		log.Fatalf("Failed to serve gRPC: %v", err)
 	}
 }
 
-func main() {
-	// Start gRPC server in a goroutine
-	go startGRPCServer()
+func runHTTPServer(cfg *config.Config) {
+	//initialize database
+	dbInstance, err := db.InitDB(cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize PostgreSQL DB: %v", err)
+	}
 
-	// Start HTTP server
-	addr := ":8080"
-	if err := handlers.StartServer(addr); err != nil {
-		log.Fatalf("Server failed: %v", err)
+	//initialize repository
+	_ = repo.NewPSQLRepository(dbInstance)
+
+	//pass to service
+
+	//start HTTP server
+	if err := handlers.StartServer(httpPort); err != nil {
+		log.Fatalf("HTTP server failed: %v", err)
 	}
 }
