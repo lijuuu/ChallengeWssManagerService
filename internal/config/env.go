@@ -11,6 +11,7 @@ type Config struct {
 	ChallengeGRPCPort string
 	ChallengeHTTPPort string
 	PsqlURL           string
+	MongoURL          string
 	SessionSecretKey  string
 }
 
@@ -24,6 +25,7 @@ func LoadConfig() Config {
 		PsqlURL:           getEnv("PSQLURL", "host=localhost port=5432 user=admin password=password dbname=xcodedev sslmode=disable"),
 		ChallengeHTTPPort: getEnv("CHALLENGEHTTPPORT", "3333"),
 		SessionSecretKey:  getEnv("SESSIONSECRETKEY", "something"),
+		MongoURL:getEnv("MONGOURL",""),
 	}
 
 	return config
