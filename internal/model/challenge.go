@@ -17,12 +17,11 @@ const (
 
 type ChallengeStatus string
 
-const (
-	StatusWaiting   ChallengeStatus = "waiting"
-	StatusStarted   ChallengeStatus = "started"
-	StatusFinished  ChallengeStatus = "finished"
-	StatusCancelled ChallengeStatus = "cancelled"
-)
+const ChallengeOpen = "CHALLENGEOPEN"
+const ChallengeClose = "CHALLENGECLOSE"
+const ChallengeStarted = "CHALLENGESTARTED"
+const ChallengeForfieted = "CHALLENGEFORFIETED"
+const ChallengeEnded = "CHALLENGEENDED"
 
 type QuestionDifficulty string
 
@@ -40,32 +39,49 @@ type Session struct {
 }
 
 type ChallengeConfig struct {
-	MaxUsers           int                             // Maximum number of participants
-	MaxEasyQuestions   int                             // Max easy questions
-	MaxMediumQuestions int                             // Max medium questions
-	MaxHardQuestions   int                             // Max hard questions
-	RandomQuestionPool map[QuestionDifficulty][]string // Pool of random question IDs by difficulty
-	InitialQuestions   map[QuestionDifficulty][]string // Initial user-provided questions
+	MaxUsers           int // Maximum number of participants
+	MaxEasyQuestions   int // Max easy questions
+	MaxMediumQuestions int // Max medium questions
+	MaxHardQuestions   int // Max hard questions
 }
 
 type Challenge struct {
-	ChallengeID  string                           `gorm:"column:challenge_id;primaryKey" json:"challenge_id"`
-	CreatorID    string                           `gorm:"column:creator_id" json:"creator_id"`
-	Title        string                           `gorm:"column:title" json:"title"`
-	IsPrivate    bool                             `gorm:"column:is_private" json:"is_private"`
-	Password     string                           `gorm:"column:password" json:"password"`
-	Status       ChallengeStatus                  `gorm:"column:status" json:"status"`
-	TimeLimit    int64                            `gorm:"column:time_limit" json:"time_limit"`
-	StartTime    int64                            `gorm:"column:start_time" json:"start_time"`
-	Participants map[string]*ParticipantMetadata  `gorm:"column:participants;type:jsonb" json:"participants"` // Store as JSONB
-	Submissions  map[string]map[string]Submission `gorm:"column:submissions;type:jsonb" json:"submissions"`   // Store as JSONB
-	Leaderboard  []*LeaderboardEntry              `gorm:"column:leaderboard;type:jsonb" json:"leaderboard"`   // Store as JSONB
-	Config       *ChallengeConfig                 `gorm:"column:config;type:jsonb" json:"config"`             // Store as JSONB
+	ChallengeID  string                           `bson:"challengeId" json:"challengeId"`
+	CreatorID    string                           `bson:"creatorId" json:"creatorId"`
+	CreatedAt    int64                            `bson:"createdAt" json:"createdAt"`
+	Title        string                           `bson:"title" json:"title"`
+	IsPrivate    bool                             `bson:"isPrivate" json:"isPrivate"`
+	Password     string                           `bson:"password" json:"password"`
+	Status       ChallengeStatus                  `bson:"status" json:"status"`
+	TimeLimit    int64                            `bson:"timeLimit" json:"timeLimit"`
+	StartTime    int64                            `bson:"startTime" json:"startTime"`
+	Participants map[string]*ParticipantMetadata  `bson:"participants" json:"participants"`
+	Submissions  map[string]map[string]Submission `bson:"submissions" json:"submissions"`
+	Leaderboard  []*LeaderboardEntry              `bson:"leaderboard" json:"leaderboard"`
+	Config       *ChallengeConfig                 `bson:"config" json:"config"`
 
-	Sessions  map[string]*Session        `gorm:"-" json:"sessions"`   // Ignored
-	WSClients map[string]*websocket.Conn `gorm:"-" json:"ws_clients"` // Still ignored (cannot persist websocket.Conn)
-	MU        sync.RWMutex               `gorm:"-" json:"-"`
-	EventChan chan Event                 `gorm:"-" json:"-"`
+	Sessions  map[string]*Session        `bson:"-" json:"sessions"`  // Ignored by MongoDB
+	WSClients map[string]*websocket.Conn `bson:"-" json:"wsClients"` // Ignored by MongoDB
+	MU        sync.RWMutex               `bson:"-" json:"-"`
+	EventChan chan Event                 `bson:"-" json:"-"`
+}
+
+type ChallengeDocument struct { //for mongo
+	ChallengeID         string                           `bson:"challengeId" json:"challengeId"`
+	CreatorID           string                           `bson:"creatorId" json:"creatorId"`
+	CreatedAt           int64                            `bson:"createdAt" json:"createdAt"`
+	Title               string                           `bson:"title" json:"title"`
+	IsPrivate           bool                             `bson:"isPrivate" json:"isPrivate"`
+	Password            string                           `bson:"password" json:"password"`
+	Status              ChallengeStatus                  `bson:"status" json:"status"`
+	TimeLimit           int64                            `bson:"timeLimit" json:"timeLimit"`
+	StartTime           int64                            `bson:"startTime" json:"startTime"`
+	Participants        map[string]*ParticipantMetadata  `bson:"participants" json:"participants"`
+	Submissions         map[string]map[string]Submission `bson:"submissions" json:"submissions"`
+	Leaderboard         []*LeaderboardEntry              `bson:"leaderboard" json:"leaderboard"`
+	Config              *ChallengeConfig                 `bson:"config" json:"config"`
+	ProcessedProblemIds []string                         `bson:"processedProblemIds" json:"processedProblemIds"`
+	ProblemCount        int64                            `bson:"problemCount" json:"problemCount"`
 }
 
 type Submission struct {
@@ -76,7 +92,6 @@ type Submission struct {
 }
 
 type ParticipantMetadata struct {
-	UserID            string
 	ProblemsDone      map[string]ChallengeProblemMetadata
 	ProblemsAttempted int
 	TotalScore        int

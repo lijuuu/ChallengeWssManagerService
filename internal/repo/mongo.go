@@ -23,56 +23,32 @@ func NewMongoRepository(client *mongo.Client, dbName string) *MongoRepository {
 }
 
 // CreateChallenge inserts a new challenge
-func (r *MongoRepository) CreateChallenge(ctx context.Context, c *model.Challenge) error {
+func (r *MongoRepository) CreateChallenge(ctx context.Context, c *model.ChallengeDocument) error {
 	c.ChallengeID = uuid.New().String()
-	c.Status = model.StatusWaiting
+	c.Status = model.ChallengeOpen
 	c.StartTime = time.Now().Unix()
 
+	c.ProblemCount = int64(len(c.ProcessedProblemIds))
 	_, err := r.challenges.InsertOne(ctx, c)
 	return err
 }
 
-// GetPublicChallenges returns open, public challenges paginated
-func (r *MongoRepository) GetPublicChallenges(ctx context.Context, page, pageSize int) ([]model.Challenge, error) {
-	if page < 1 || pageSize < 1 {
-		return nil, errors.New("invalid pagination")
-	}
-
-	filter := bson.M{"is_private": false}
-	opts := options.Find().
-		SetSort(bson.D{{Key: "start_time", Value: -1}}).
-		SetSkip(int64((page - 1) * pageSize)).
-		SetLimit(int64(pageSize))
-
-	cursor, err := r.challenges.Find(ctx, filter, opts)
-	if err != nil {
-		return nil, err
-	}
-	defer cursor.Close(ctx)
-
-	var results []model.Challenge
-	if err := cursor.All(ctx, &results); err != nil {
-		return nil, err
-	}
-	return results, nil
-}
-
-// GetPrivateChallengesOfUser returns private challenges for a user (creator or participant)
-func (r *MongoRepository) GetPrivateChallengesOfUser(ctx context.Context, userID string, page, pageSize int) ([]model.Challenge, error) {
+// GetChallengeHistory returns challenge history; toggle it using isPrivate
+func (r *MongoRepository) GetChallengeHistory(ctx context.Context, userID string, page, pageSize int, isPrivate bool) ([]model.ChallengeDocument, error) {
 	if page < 1 || pageSize < 1 || userID == "" {
 		return nil, errors.New("invalid pagination or userID")
 	}
 
 	filter := bson.M{
-		"is_private": true,
+		"isPrivate": isPrivate,
 		"$or": []bson.M{
-			{"creator_id": userID},
+			{"creatorId": userID},
 			{"participants." + userID: bson.M{"$exists": true}},
 		},
 	}
 
 	opts := options.Find().
-		SetSort(bson.D{{Key: "start_time", Value: -1}}).
+		SetSort(bson.D{{Key: "startTime", Value: -1}}).
 		SetSkip(int64((page - 1) * pageSize)).
 		SetLimit(int64(pageSize))
 
@@ -82,7 +58,7 @@ func (r *MongoRepository) GetPrivateChallengesOfUser(ctx context.Context, userID
 	}
 	defer cursor.Close(ctx)
 
-	var results []model.Challenge
+	var results []model.ChallengeDocument
 	if err := cursor.All(ctx, &results); err != nil {
 		return nil, err
 	}
@@ -90,14 +66,17 @@ func (r *MongoRepository) GetPrivateChallengesOfUser(ctx context.Context, userID
 }
 
 // GetActiveChallenges returns challenges not marked as finished
-func (r *MongoRepository) GetActiveChallenges(ctx context.Context, page, pageSize int) ([]model.Challenge, error) {
+func (r *MongoRepository) GetActiveOpenChallenges(ctx context.Context, page, pageSize int) ([]model.ChallengeDocument, error) {
 	if page < 1 || pageSize < 1 {
 		return nil, errors.New("invalid pagination")
 	}
 
-	filter := bson.M{"status": bson.M{"$ne": model.StatusFinished}}
+	filter := bson.M{
+		"status":    model.ChallengeOpen,
+		"isPrivate": false,
+	}
 	opts := options.Find().
-		SetSort(bson.D{{Key: "start_time", Value: 1}}).
+		SetSort(bson.D{{Key: "startTime", Value: 1}}).
 		SetSkip(int64((page - 1) * pageSize)).
 		SetLimit(int64(pageSize))
 
@@ -107,22 +86,27 @@ func (r *MongoRepository) GetActiveChallenges(ctx context.Context, page, pageSiz
 	}
 	defer cursor.Close(ctx)
 
-	var results []model.Challenge
+	var results []model.ChallengeDocument
 	if err := cursor.All(ctx, &results); err != nil {
 		return nil, err
 	}
 	return results, nil
 }
 
-// GetUserChallenges returns challenges created by a specific user
-func (r *MongoRepository) GetUserChallenges(ctx context.Context, userID string, page, pageSize int) ([]model.Challenge, error) {
+// GetOwnersActiveChallenges returns challenges created by a specific user that are either open or started
+func (r *MongoRepository) GetOwnersActiveChallenges(ctx context.Context, userID string, page, pageSize int) ([]model.ChallengeDocument, error) {
 	if page < 1 || pageSize < 1 || userID == "" {
 		return nil, errors.New("invalid pagination or userID")
 	}
 
-	filter := bson.M{"creator_id": userID}
+	filter := bson.M{
+		"creatorId": userID,
+		"status": bson.M{
+			"$in": []model.ChallengeStatus{model.ChallengeOpen, model.ChallengeStarted},
+		},
+	}
 	opts := options.Find().
-		SetSort(bson.D{{Key: "start_time", Value: -1}}).
+		SetSort(bson.D{{Key: "startTime", Value: -1}}).
 		SetSkip(int64((page - 1) * pageSize)).
 		SetLimit(int64(pageSize))
 
@@ -132,7 +116,7 @@ func (r *MongoRepository) GetUserChallenges(ctx context.Context, userID string, 
 	}
 	defer cursor.Close(ctx)
 
-	var results []model.Challenge
+	var results []model.ChallengeDocument
 	if err := cursor.All(ctx, &results); err != nil {
 		return nil, err
 	}

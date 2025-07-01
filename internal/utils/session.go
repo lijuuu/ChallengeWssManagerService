@@ -2,16 +2,9 @@ package utils
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"sync"
-
-	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
-)
-
-var (
-	activeSessions = make(map[string]*model.Session)
-	sessionMu      sync.RWMutex
 )
 
 // ValidateSessionHash checks if the session hash is valid for a user
@@ -28,14 +21,17 @@ func GenerateSessionHash(userID, challengeID, password, sessionHashKey string) s
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func SetSession(key string, session *model.Session) {
-	sessionMu.Lock()
-	activeSessions[key] = session
-	sessionMu.Unlock()
-}
+func GenerateBigCapPassword(length int) string {
+	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-func DeleteSession(key string) {
-	sessionMu.Lock()
-	delete(activeSessions, key)
-	sessionMu.Unlock()
+	bytes := make([]byte, length)
+	_, err := rand.Read(bytes)
+	if err != nil {
+		return ""
+	}
+
+	for i := 0; i < length; i++ {
+		bytes[i] = letters[int(bytes[i])%len(letters)]
+	}
+	return string(bytes)
 }
