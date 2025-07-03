@@ -3,7 +3,6 @@ package repo
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
@@ -26,7 +25,6 @@ func NewMongoRepository(client *mongo.Client, dbName string) *MongoRepository {
 func (r *MongoRepository) CreateChallenge(ctx context.Context, c *model.ChallengeDocument) error {
 	c.ChallengeID = uuid.New().String()
 	c.Status = model.ChallengeOpen
-	c.StartTime = time.Now().Unix()
 
 	c.ProblemCount = int64(len(c.ProcessedProblemIds))
 	_, err := r.challenges.InsertOne(ctx, c)
@@ -63,6 +61,32 @@ func (r *MongoRepository) GetChallengeHistory(ctx context.Context, userID string
 		return nil, err
 	}
 	return results, nil
+}
+
+func (r *MongoRepository) AbandonChallenge(ctx context.Context, creatorId, challengeId string) error {
+	filter := bson.M{
+		"creatorId":   creatorId,
+		"challengeId": challengeId,
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"status": model.ChallengeAbandon,
+		},
+	}
+
+	_, err := r.challenges.UpdateOne(ctx, filter, update)
+	return err
+}
+
+func (r *MongoRepository) GetChallengeByID(ctx context.Context, challengeId string) (model.ChallengeDocument, error) {
+	filter := bson.M{
+		"challengeId": challengeId,
+	}
+
+	var result model.ChallengeDocument
+	err := r.challenges.FindOne(ctx, filter).Decode(&result)
+	return result, err
 }
 
 // GetActiveChallenges returns challenges not marked as finished

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
@@ -14,12 +15,21 @@ type ChallengeService struct {
 	repo *repo.MongoRepository
 	challengePb.UnimplementedChallengeServiceServer
 }
-
+ 
 func NewChallengeService(repo *repo.MongoRepository) *ChallengeService {
 	return &ChallengeService{repo: repo}
 }
 
 func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb.ChallengeRecord) (*challengePb.ChallengeRecord, error) {
+
+	challenges, err := s.repo.GetActiveOpenChallenges(ctx, 1, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(challenges) != 0 {
+		return nil, errors.New("active challenge already found, can't create new challenge")
+	}
+
 	modelChallenge := ChallengeDocumentFromProto(req, false)
 
 	modelChallenge.Status = model.ChallengeOpen
@@ -49,6 +59,36 @@ func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb
 		return nil, err
 	}
 	return req, nil
+}
+
+func (s *ChallengeService) AbandonChallenge(ctx context.Context, req *challengePb.AbandonChallengeRequest) (*challengePb.AbandonChallengeResponse, error) {
+	// Fetch the challenge to verify the creator
+	challenge, err := s.repo.GetChallengeByID(ctx, req.ChallengeId)
+	if err != nil {
+		return &challengePb.AbandonChallengeResponse{
+			Success:   false,
+			Message:   "Challenge not found",
+			ErrorType: "CHALLENGENOTFOUND",
+		}, err
+	}
+
+	if challenge.CreatorID != req.CreatorId {
+		return &challengePb.AbandonChallengeResponse{
+			Success:   false,
+			Message:   "Only the creator can abandon the challenge",
+			ErrorType: "NOTCREATOR",
+		}, nil
+	}
+
+	if err := s.repo.AbandonChallenge(ctx, req.CreatorId, req.ChallengeId); err != nil {
+		return &challengePb.AbandonChallengeResponse{
+			Success:   false,
+			Message:   err.Error(),
+			ErrorType: "CHALLENGEABANDONFAILED",
+		}, err
+	}
+
+	return &challengePb.AbandonChallengeResponse{Success: true}, nil
 }
 
 func (s *ChallengeService) GetChallengeHistory(ctx context.Context, req *challengePb.GetChallengeHistoryRequest) (*challengePb.ChallengeListResponse, error) {

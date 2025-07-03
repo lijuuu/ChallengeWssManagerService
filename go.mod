@@ -7,7 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
-	github.com/lijuuu/GlobalProtoXcode v0.0.0-20250701145913-51caceccf5e0
+	github.com/lijuuu/GlobalProtoXcode v0.0.0-20250703052621-60ac1a46d99b
 	go.mongodb.org/mongo-driver v1.17.4
 	google.golang.org/grpc v1.70.0
 )

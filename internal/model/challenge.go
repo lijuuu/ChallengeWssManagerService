@@ -22,6 +22,7 @@ const ChallengeClose = "CHALLENGECLOSE"
 const ChallengeStarted = "CHALLENGESTARTED"
 const ChallengeForfieted = "CHALLENGEFORFIETED"
 const ChallengeEnded = "CHALLENGEENDED"
+const ChallengeAbandon = "CHALLENGEABANDON"
 
 type QuestionDifficulty string
 
