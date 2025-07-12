@@ -15,7 +15,7 @@ type ChallengeService struct {
 	repo *repo.MongoRepository
 	challengePb.UnimplementedChallengeServiceServer
 }
- 
+
 func NewChallengeService(repo *repo.MongoRepository) *ChallengeService {
 	return &ChallengeService{repo: repo}
 }
@@ -61,6 +61,25 @@ func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb
 	return req, nil
 }
 
+func (s *ChallengeService) LeaveChallenge(ctx context.Context, challengeId, userId string) bool {
+	// Fetch the challenge to verify the creator
+	challenge, err := s.repo.GetChallengeByID(ctx, challengeId)
+	if err != nil {
+		return false
+	}
+
+	if challenge.CreatorID != userId {
+		return false
+	}
+
+	if err := s.repo.RemoveParticipantInJoinPhase(ctx, challengeId, userId); err != nil {
+		return false
+	}
+
+	return true
+}
+ 
+
 func (s *ChallengeService) AbandonChallenge(ctx context.Context, req *challengePb.AbandonChallengeRequest) (*challengePb.AbandonChallengeResponse, error) {
 	// Fetch the challenge to verify the creator
 	challenge, err := s.repo.GetChallengeByID(ctx, req.ChallengeId)
@@ -89,6 +108,17 @@ func (s *ChallengeService) AbandonChallenge(ctx context.Context, req *challengeP
 	}
 
 	return &challengePb.AbandonChallengeResponse{Success: true}, nil
+}
+
+func (s *ChallengeService) GetFullChallengeData(ctx context.Context, req *challengePb.GetFullChallengeDataRequest) (*challengePb.GetFullChallengeDataResponse, error) {
+	challenge, err := s.repo.GetChallengeByID(ctx, req.ChallengeId)
+	if err != nil {
+		return nil, err
+	}
+
+	return &challengePb.GetFullChallengeDataResponse{
+		Challenge: ChallengesToProto([]*model.ChallengeDocument{&challenge}, false)[0],
+	}, nil
 }
 
 func (s *ChallengeService) GetChallengeHistory(ctx context.Context, req *challengePb.GetChallengeHistoryRequest) (*challengePb.ChallengeListResponse, error) {

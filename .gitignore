@@ -1,1 +1,7 @@
 .env
+/tmp/*
+
+tmp/main
+tmp/build-errors.log
+
+tmp/

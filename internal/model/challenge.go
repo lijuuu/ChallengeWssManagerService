@@ -33,17 +33,17 @@ const (
 )
 
 type Session struct {
-	UserID      string
-	ChallengeID string
-	LastActive  int64
-	SessionHash string
+	UserID      string `json:"userId"`
+	ChallengeID string `json:"challengeId"`
+	LastActive  int64  `json:"lastActive"`
+	SessionHash string `json:"sessionHash"`
 }
 
 type ChallengeConfig struct {
-	MaxUsers           int // Maximum number of participants
-	MaxEasyQuestions   int // Max easy questions
-	MaxMediumQuestions int // Max medium questions
-	MaxHardQuestions   int // Max hard questions
+	MaxUsers           int `json:"maxUsers"`
+	MaxEasyQuestions   int `json:"maxEasyQuestions"`
+	MaxMediumQuestions int `json:"maxMediumQuestions"`
+	MaxHardQuestions   int `json:"maxHardQuestions"`
 }
 
 type Challenge struct {
@@ -60,14 +60,15 @@ type Challenge struct {
 	Submissions  map[string]map[string]Submission `bson:"submissions" json:"submissions"`
 	Leaderboard  []*LeaderboardEntry              `bson:"leaderboard" json:"leaderboard"`
 	Config       *ChallengeConfig                 `bson:"config" json:"config"`
+	ProcessedProblemIds []string                         `bson:"processedProblemIds" json:"processedProblemIds"`
 
-	Sessions  map[string]*Session        `bson:"-" json:"sessions"`  // Ignored by MongoDB
-	WSClients map[string]*websocket.Conn `bson:"-" json:"wsClients"` // Ignored by MongoDB
+	Sessions  map[string]*Session        `bson:"-" json:"-"`
+	WSClients map[string]*websocket.Conn `bson:"-" json:"-"`
 	MU        sync.RWMutex               `bson:"-" json:"-"`
 	EventChan chan Event                 `bson:"-" json:"-"`
 }
 
-type ChallengeDocument struct { //for mongo
+type ChallengeDocument struct {
 	ChallengeID         string                           `bson:"challengeId" json:"challengeId"`
 	CreatorID           string                           `bson:"creatorId" json:"creatorId"`
 	CreatedAt           int64                            `bson:"createdAt" json:"createdAt"`
@@ -86,30 +87,32 @@ type ChallengeDocument struct { //for mongo
 }
 
 type Submission struct {
-	SubmissionID string
-	TimeTaken    time.Duration
-	Points       int
-	UserCode     string
+	SubmissionID string        `json:"submissionId"`
+	TimeTaken    time.Duration `json:"timeTaken"` // ms
+	Points       int           `json:"points"`
+	UserCode     string        `json:"userCode"`
 }
 
 type ParticipantMetadata struct {
-	ProblemsDone      map[string]ChallengeProblemMetadata
-	ProblemsAttempted int
-	TotalScore        int
-	JoinTime          int64
-	LastConnected     int64
+	ProblemsDone      map[string]ChallengeProblemMetadata `json:"problemsDone"`
+	ProblemsAttempted int                                 `json:"problemsAttempted"`
+	TotalScore        int                                 `json:"totalScore"`
+	JoinTime          int64                               `json:"joinTime"`
+	LastConnected     int64                               `json:"lastConnected"`
+	InitialJoinIP     string                              `json:"initialJoinIp"`
+	Status            string                              `json:"status"`
 }
 
 type ChallengeProblemMetadata struct {
-	ProblemID   string
-	Score       int
-	TimeTaken   int64
-	CompletedAt int64
+	ProblemID   string `json:"problemId"`
+	Score       int    `json:"score"`
+	TimeTaken   int64  `json:"timeTaken"`
+	CompletedAt int64  `json:"completedAt"`
 }
 
 type LeaderboardEntry struct {
-	UserID            string
-	ProblemsCompleted int
-	TotalScore        int
-	Rank              int
+	UserID            string `json:"userId"`
+	ProblemsCompleted int    `json:"problemsCompleted"`
+	TotalScore        int    `json:"totalScore"`
+	Rank              int    `json:"rank"`
 }

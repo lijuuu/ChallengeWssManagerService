@@ -70,3 +70,17 @@ type WebSocketMessage struct {
 	Type    string          `json:"type"`
 	Payload json.RawMessage `json:"payload"`
 }
+
+type GenericResponse struct {
+	Success bool                   `json:"success"`
+	Status  int                    `json:"status"`
+	Payload map[string]interface{} `json:"payload,omitempty"`
+	Error   *ErrorInfo             `json:"error,omitempty"`
+}
+
+type ErrorInfo struct {
+	ErrorType string `json:"type"`
+	Code      int    `json:"code"`
+	Message   string `json:"message"`
+	Details   string `json:"details"`
+}

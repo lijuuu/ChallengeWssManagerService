@@ -13,6 +13,8 @@ type Config struct {
 	PsqlURL           string
 	MongoURL          string
 	SessionSecretKey  string
+
+	APIGatewayTokenCheckURL string
 }
 
 func LoadConfig() Config {
@@ -21,11 +23,12 @@ func LoadConfig() Config {
 		log.Fatal("Error loading .env file", err)
 	}
 	config := Config{
-		ChallengeGRPCPort: getEnv("CHALLENGEGRPCPORT", "50057"),
-		PsqlURL:           getEnv("PSQLURL", "host=localhost port=5432 user=admin password=password dbname=xcodedev sslmode=disable"),
-		ChallengeHTTPPort: getEnv("CHALLENGEHTTPPORT", "3333"),
-		SessionSecretKey:  getEnv("SESSIONSECRETKEY", "something"),
-		MongoURL:getEnv("MONGOURL",""),
+		ChallengeGRPCPort:       getEnv("CHALLENGEGRPCPORT", "50057"),
+		PsqlURL:                 getEnv("PSQLURL", "host=localhost port=5432 user=admin password=password dbname=xcodedev sslmode=disable"),
+		ChallengeHTTPPort:       getEnv("CHALLENGEHTTPPORT", "3333"),
+		SessionSecretKey:        getEnv("SESSIONSECRETKEY", "something"),
+		MongoURL:                getEnv("MONGOURL", ""),
+		APIGatewayTokenCheckURL: getEnv("APIGATEWAYTOKENCHECKURL", "http://localhost:7000/api/v1/users/check-token"),
 	}
 
 	return config

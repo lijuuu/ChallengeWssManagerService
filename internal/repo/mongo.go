@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
@@ -79,6 +80,39 @@ func (r *MongoRepository) AbandonChallenge(ctx context.Context, creatorId, chall
 	return err
 }
 
+func (r *MongoRepository) AddParticipantInJoinPhase(ctx context.Context, challengeId, userId string, metadata *model.ParticipantMetadata) error {
+	filter := bson.M{
+		"challengeId": challengeId,
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"participants." + userId: metadata,
+		},
+	}
+
+	_, err := r.challenges.UpdateOne(ctx, filter, update)
+	return err
+}
+
+func (r *MongoRepository) RemoveParticipantInJoinPhase(ctx context.Context, challengeId, userId string) error {
+	filter := bson.M{
+		"challengeId": challengeId,
+	}
+
+	update := bson.M{
+		"$unset": bson.M{
+			"participants." + userId: "",
+			"submissions." + userId:  "",
+		},
+	}
+
+	_, err := r.challenges.UpdateOne(ctx, filter, update)
+	fmt.Println("removing participant err; ", err)
+
+	return err
+}
+
 func (r *MongoRepository) GetChallengeByID(ctx context.Context, challengeId string) (model.ChallengeDocument, error) {
 	filter := bson.M{
 		"challengeId": challengeId,
@@ -145,4 +179,26 @@ func (r *MongoRepository) GetOwnersActiveChallenges(ctx context.Context, userID 
 		return nil, err
 	}
 	return results, nil
+}
+
+// CheckChallengeAccess checks if a user has access to a challenge (as creator or participant)
+func (r *MongoRepository) CheckChallengeAccess(ctx context.Context, challengeId, userId, password string) (bool, error) {
+	if challengeId == "" || userId == "" {
+		return false, errors.New("challengeId and userId are required")
+	}
+
+	filter := bson.M{
+		"challengeId": challengeId,
+		"password":    password,
+		// "$or": []bson.M{
+		// 	{"creatorId": userId},
+		// 	{"participants." + userId: bson.M{"$exists": true}},
+		// },
+	}
+
+	count, err := r.challenges.CountDocuments(ctx, filter)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
