@@ -58,6 +58,29 @@ func BroadcastEntityJoined(challenge *model.Challenge, userID, challengeID strin
 	}
 }
 
+func BroadcastChallengeAbandon(challenge *model.Challenge) {
+	if challenge == nil{
+		return
+	}
+	
+	for _, conn := range challenge.WSClients {
+		if conn == nil {
+			continue
+		}
+
+		SendJSON(conn, map[string]interface{}{
+			"type":    wsstypes.CREATOR_ABANDON,
+			"status":  "ok",
+			"message": "Creator abandoned the challenge",
+			"payload": map[string]interface{}{
+				"challengeId": challenge.ChallengeID,
+				"userId":      challenge.CreatorID,
+				"time":        time.Now(),
+			},
+		})
+	}
+}
+
 // func TimeSync(){}
 
 //

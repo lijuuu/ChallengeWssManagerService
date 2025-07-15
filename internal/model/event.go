@@ -4,18 +4,7 @@ import "encoding/json"
 
 type EventType string
 
-const (
-	EventChallengeCreated       EventType = "challenge_created"
-	EventChallengeDeleted       EventType = "challenge_deleted"
-	EventUserJoined             EventType = "user_joined"
-	EventUserLeft               EventType = "user_left"
-	EventUserForfeited          EventType = "user_forfeited"
-	EventProblemSubmitted       EventType = "problem_submitted"
-	EventLeaderboardUpdated     EventType = "leaderboard_updated"
-	EventChallengeStatusChanged EventType = "challenge_status_changed"
-	EventTimeUpdate             EventType = "time_update"
-	EventError                  EventType = "error"
-)
+
 
 type Event struct {
 	Type    EventType   `json:"type"`

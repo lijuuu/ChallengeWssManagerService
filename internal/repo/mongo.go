@@ -181,24 +181,24 @@ func (r *MongoRepository) GetOwnersActiveChallenges(ctx context.Context, userID 
 	return results, nil
 }
 
-// CheckChallengeAccess checks if a user has access to a challenge (as creator or participant)
 func (r *MongoRepository) CheckChallengeAccess(ctx context.Context, challengeId, userId, password string) (bool, error) {
 	if challengeId == "" || userId == "" {
 		return false, errors.New("challengeId and userId are required")
 	}
-
-	filter := bson.M{
-		"challengeId": challengeId,
-		"password":    password,
-		// "$or": []bson.M{
-		// 	{"creatorId": userId},
-		// 	{"participants." + userId: bson.M{"$exists": true}},
-		// },
-	}
-
-	count, err := r.challenges.CountDocuments(ctx, filter)
+	var challenge model.ChallengeDocument
+	err := r.challenges.FindOne(ctx, bson.M{"challengeId": challengeId}).Decode(&challenge)
 	if err != nil {
 		return false, err
 	}
-	return count > 0, nil
+
+	if challenge.Status != model.ChallengeOpen {
+		return false, errors.New("challenges doesnt exist")
+	}
+
+	// check password only if challenge has one
+	if challenge.Password != "" && challenge.Password != password {
+		return false, nil // password required and doesn't match
+	}
+
+	return true, nil
 }

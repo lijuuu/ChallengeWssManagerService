@@ -3,26 +3,30 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/repo"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/utils"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/wss/broadcasts"
+	wsstypes "github.com/lijuuu/ChallengeWssManagerService/internal/wss/types"
 	challengePb "github.com/lijuuu/GlobalProtoXcode/ChallengeService"
 )
 
 type ChallengeService struct {
-	repo *repo.MongoRepository
+	repo           *repo.MongoRepository
+	websocketState *wsstypes.State
 	challengePb.UnimplementedChallengeServiceServer
 }
 
-func NewChallengeService(repo *repo.MongoRepository) *ChallengeService {
-	return &ChallengeService{repo: repo}
+func NewChallengeService(repo *repo.MongoRepository, websocketState *wsstypes.State) *ChallengeService {
+	return &ChallengeService{repo: repo, websocketState: websocketState}
 }
 
 func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb.ChallengeRecord) (*challengePb.ChallengeRecord, error) {
 
-	challenges, err := s.repo.GetActiveOpenChallenges(ctx, 1, 1)
+	challenges, err := s.repo.GetActiveOpenChallenges(ctx, 1, 1) //TODO:(P1) changes this to check the  specific user and then check on state wss for any current repo, we need mutex locks
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +82,6 @@ func (s *ChallengeService) LeaveChallenge(ctx context.Context, challengeId, user
 
 	return true
 }
- 
 
 func (s *ChallengeService) AbandonChallenge(ctx context.Context, req *challengePb.AbandonChallengeRequest) (*challengePb.AbandonChallengeResponse, error) {
 	// Fetch the challenge to verify the creator
@@ -107,9 +110,26 @@ func (s *ChallengeService) AbandonChallenge(ctx context.Context, req *challengeP
 		}, err
 	}
 
+	// Check for nil websocketState or Challenges map
+	if s.websocketState == nil || s.websocketState.Challenges == nil {
+		// Log the issue (consider adding a proper logger instead of fmt)
+		fmt.Printf("Warning: websocketState or Challenges map is nil for challenge ID %s\n", req.ChallengeId)
+		return &challengePb.AbandonChallengeResponse{Success: true}, nil
+	}
+
+	// Check if the challenge exists in the WebSocket state
+	challengeState, exists := s.websocketState.Challenges[challenge.ChallengeID]
+	if !exists {
+		// Log the issue
+		fmt.Printf("Warning: Challenge ID %s not found in websocketState.Challenges\n", challenge.ChallengeID)
+		return &challengePb.AbandonChallengeResponse{Success: true}, nil
+	}
+
+	// Broadcast the abandon event
+	broadcasts.BroadcastChallengeAbandon(challengeState)
+
 	return &challengePb.AbandonChallengeResponse{Success: true}, nil
 }
-
 func (s *ChallengeService) GetFullChallengeData(ctx context.Context, req *challengePb.GetFullChallengeDataRequest) (*challengePb.GetFullChallengeDataResponse, error) {
 	challenge, err := s.repo.GetChallengeByID(ctx, req.ChallengeId)
 	if err != nil {

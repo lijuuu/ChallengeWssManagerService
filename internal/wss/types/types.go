@@ -16,14 +16,14 @@ type State struct {
 
 type WsContext struct {
 	Conn    *websocket.Conn
-	Payload map[string]interface{}
+	Payload map[string]any
 	UserID  string
 	State   *State
 }
 
 type WsMessage struct {
-	Type    string                 `json:"type"`
-	Payload map[string]interface{} `json:"payload"`
+	Type    string         `json:"type"`
+	Payload map[string]any `json:"payload"`
 }
 
 type JoinChallengePayload struct {
@@ -41,10 +41,10 @@ type RefetchChallengePayload struct {
 }
 
 type GenericResponse struct {
-	Success bool                   `json:"success"`
-	Status  int                    `json:"status"`
-	Payload map[string]interface{} `json:"payload"` // or interface{}
-	Error   *ErrorInfo             `json:"error"`
+	Success bool           `json:"success"`
+	Status  int            `json:"status"`
+	Payload map[string]any `json:"payload"`
+	Error   *ErrorInfo     `json:"error"`
 }
 
 type ErrorInfo struct {

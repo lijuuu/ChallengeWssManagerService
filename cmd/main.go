@@ -5,6 +5,7 @@ import (
 	// "math/rand"
 	"net"
 	"net/http"
+
 	// "time"
 
 	"github.com/lijuuu/ChallengeWssManagerService/internal/config"
@@ -29,30 +30,31 @@ func main() {
 	mongoInstance, err := db.InitDB(&cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize MongoDB: %v", err)
+
 	}
 
 	// Initialize repository and service
 	challengeRepo := repo.NewMongoRepository(mongoInstance, "challengeDB")
-	challengeService := service.NewChallengeService(challengeRepo)
-
-	// Start gRPC server in a goroutine
-	go runGRPCServer(&cfg, challengeService)
-
 	// Initialize WebSocket handler
-	state := &wsstypes.State{
+	websocketState := &wsstypes.State{
 		Repo:       *challengeRepo,
 		Challenges: make(map[string]*model.Challenge),
 	}
+
+	challengeService := service.NewChallengeService(challengeRepo, websocketState)
+
+	// Start gRPC server in a goroutine
+	go runGRPCServer(&cfg, challengeService)
 
 	dispatcher := wss.NewDispatcher()
 
 	//ping for latency check
 	dispatcher.Register(wsstypes.PING_SERVER, func(wc *wsstypes.WsContext) error {
 		/*
-		//to imitate irl latencies - use math/rand instead of crypto/rand
-		rand.Seed(time.Now().UnixNano()) 
-		randDuration := time.Duration(rand.Intn(1000)) * time.Millisecond
-		time.Sleep(randDuration)*/
+			//to imitate irl latencies - use math/rand instead of crypto/rand
+			rand.Seed(time.Now().UnixNano())
+			randDuration := time.Duration(rand.Intn(1000)) * time.Millisecond
+			time.Sleep(randDuration)*/
 		return broadcasts.SendJSON(wc.Conn, map[string]interface{}{
 			"type":    wsstypes.PING_SERVER,
 			"status":  "ok",
@@ -66,7 +68,7 @@ func main() {
 	//refetch challenge
 	dispatcher.Register(wsstypes.REFETCH_CHALLENGE, wsshandler.RefetchChallenge)
 
-	http.HandleFunc("/ws", wss.WsHandler(dispatcher, state))
+	http.HandleFunc("/ws", wss.WsHandler(dispatcher, websocketState))
 
 	log.Println("Starting WebSocket server at ws://localhost:7777/ws")
 	if err := http.ListenAndServe("0.0.0.0:7777", nil); err != nil {

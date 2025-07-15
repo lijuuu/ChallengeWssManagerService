@@ -5,3 +5,5 @@ tmp/main
 tmp/build-errors.log
 
 tmp/
+
+.kiro/

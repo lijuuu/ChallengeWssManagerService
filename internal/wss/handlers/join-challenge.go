@@ -3,6 +3,7 @@ package wsshandler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -35,6 +36,8 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Invalid payload format", nil)
 	}
 	log.Printf("[%s] [JoinChallenge] Incoming request from userId %s IP: %s", requestID, payload.UserId, clientIP)
+
+	fmt.Println("payload ", payload)
 
 	// auth
 	startAuth := time.Now()
@@ -84,6 +87,9 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 	}
 	if !ok {
 		log.Printf("[%s] [JoinChallenge] Access denied to challenge %s", requestID, payload.ChallengeId)
+		
+		//close ws connection if not eligible
+		ctx.Conn.Close()
 		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Invalid challenge ID or password", nil)
 	}
 
@@ -93,14 +99,19 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 	ctx.State.Mu.Lock()
 	defer ctx.State.Mu.Unlock()
 
+	challengeDoc, err := ctx.State.Repo.GetChallengeByID(context.Background(), payload.ChallengeId)
+	if err != nil {
+		log.Printf("[WS] DB load error: %v", err)
+		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge not found", nil)
+	}
+
+	if challengeDoc.Status == model.ChallengeAbandon {
+		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge is abandoned", nil)
+	}
+
 	challenge, exists := ctx.State.Challenges[payload.ChallengeId]
 	if !exists {
 		log.Printf("[WS] Challenge %s not in memory, loading...", payload.ChallengeId)
-		challengeDoc, err := ctx.State.Repo.GetChallengeByID(context.Background(), payload.ChallengeId)
-		if err != nil {
-			log.Printf("[WS] DB load error: %v", err)
-			return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge not found", nil)
-		}
 		challenge = ConvertChallengeDocToChallenge(&challengeDoc)
 		ctx.State.Challenges[payload.ChallengeId] = challenge
 		log.Printf("[WS] Loaded challenge %s into memory", payload.ChallengeId)
