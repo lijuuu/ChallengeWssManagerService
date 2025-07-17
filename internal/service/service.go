@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/repo"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/utils"
@@ -15,59 +17,88 @@ import (
 )
 
 type ChallengeService struct {
-	repo           *repo.MongoRepository
-	websocketState *wsstypes.State
+	mongoRepo          *repo.MongoRepository
+	redisRepo          *repo.RedisRepository
+	websocketState     *wsstypes.State
+	leaderboardManager *LeaderboardManager
 	challengePb.UnimplementedChallengeServiceServer
 }
 
-func NewChallengeService(repo *repo.MongoRepository, websocketState *wsstypes.State) *ChallengeService {
-	return &ChallengeService{repo: repo, websocketState: websocketState}
+func NewChallengeService(mongoRepo *repo.MongoRepository, redisRepo *repo.RedisRepository, websocketState *wsstypes.State) *ChallengeService {
+	// Initialize leaderboard manager with Redis connection details
+	leaderboardManager := NewLeaderboardManager(redisRepo.GetRedisAddr(), redisRepo.GetRedisPassword())
+
+	return &ChallengeService{
+		mongoRepo:          mongoRepo,
+		redisRepo:          redisRepo,
+		websocketState:     websocketState,
+		leaderboardManager: leaderboardManager,
+	}
 }
 
 func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb.ChallengeRecord) (*challengePb.ChallengeRecord, error) {
 
-	challenges, err := s.repo.GetActiveOpenChallenges(ctx, 1, 1) //TODO:(P1) changes this to check the  specific user and then check on state wss for any current repo, we need mutex locks
+	// Check for active challenges using Redis
+	challengeIDs, err := s.redisRepo.GetChallengesByStatus(ctx, string(model.ChallengeOpen))
 	if err != nil {
 		return nil, err
 	}
-	if len(challenges) != 0 {
+	if len(challengeIDs) != 0 {
 		return nil, errors.New("active challenge already found, can't create new challenge")
 	}
 
-	modelChallenge := ChallengeDocumentFromProto(req, false)
+	modelChallengeDoc := ChallengeDocumentFromProto(req, false)
 
-	modelChallenge.Status = model.ChallengeOpen
-	modelChallenge.Participants[modelChallenge.CreatorID] = &model.ParticipantMetadata{
+	// Initialize challenge document for Redis storage
+	modelChallengeDoc.Status = model.ChallengeOpen
+	modelChallengeDoc.Participants = make(map[string]*model.ParticipantMetadata)
+	modelChallengeDoc.Submissions = make(map[string]map[string]model.Submission)
+	modelChallengeDoc.Leaderboard = make([]*model.LeaderboardEntry, 0)
+
+	modelChallengeDoc.Participants[modelChallengeDoc.CreatorID] = &model.ParticipantMetadata{
 		JoinTime: time.Now().Unix(),
 	}
 
 	if req.IsPrivate {
-		modelChallenge.Password = utils.GenerateBigCapPassword(7)
+		modelChallengeDoc.Password = utils.GenerateBigCapPassword(7)
 	}
 
-	modelChallenge.Leaderboard = append(modelChallenge.Leaderboard, &model.LeaderboardEntry{
+	modelChallengeDoc.Leaderboard = append(modelChallengeDoc.Leaderboard, &model.LeaderboardEntry{
 		UserID:            req.CreatorId,
 		TotalScore:        0,
 		Rank:              0,
 		ProblemsCompleted: 0,
 	})
 
-	modelChallenge.Config = &model.ChallengeConfig{
+	modelChallengeDoc.Config = &model.ChallengeConfig{
 		MaxEasyQuestions:   int(req.GetConfig().GetMaxEasyQuestions()),
 		MaxMediumQuestions: int(req.GetConfig().GetMaxMediumQuestions()),
 		MaxHardQuestions:   int(req.GetConfig().GetMaxHardQuestions()),
 		MaxUsers:           int(req.GetConfig().MaxUsers),
 	}
 
-	if err := s.repo.CreateChallenge(ctx, modelChallenge); err != nil {
+	// Create challenge in Redis only
+	if err := s.redisRepo.CreateChallenge(ctx, modelChallengeDoc); err != nil {
 		return nil, err
 	}
+
+	// Initialize leaderboard for the new challenge
+	if err := s.leaderboardManager.InitializeLeaderboard(modelChallengeDoc.ChallengeID); err != nil {
+		log.Printf("[CreateChallenge] Warning: Failed to initialize leaderboard for challenge %s: %v", modelChallengeDoc.ChallengeID, err)
+		// Don't fail challenge creation if leaderboard initialization fails
+	} else {
+		// Add creator to leaderboard with initial score of 0
+		if err := s.leaderboardManager.UpdateParticipantScore(modelChallengeDoc.ChallengeID, modelChallengeDoc.CreatorID, 0); err != nil {
+			log.Printf("[CreateChallenge] Warning: Failed to add creator to leaderboard for challenge %s: %v", modelChallengeDoc.ChallengeID, err)
+		}
+	}
+
 	return req, nil
 }
 
 func (s *ChallengeService) LeaveChallenge(ctx context.Context, challengeId, userId string) bool {
-	// Fetch the challenge to verify the creator
-	challenge, err := s.repo.GetChallengeByID(ctx, challengeId)
+	// Fetch the challenge to verify the creator using Redis repository
+	challenge, err := s.redisRepo.GetChallengeByID(ctx, challengeId)
 	if err != nil {
 		return false
 	}
@@ -76,7 +107,7 @@ func (s *ChallengeService) LeaveChallenge(ctx context.Context, challengeId, user
 		return false
 	}
 
-	if err := s.repo.RemoveParticipantInJoinPhase(ctx, challengeId, userId); err != nil {
+	if err := s.redisRepo.RemoveParticipantInJoinPhase(ctx, challengeId, userId); err != nil {
 		return false
 	}
 
@@ -84,8 +115,8 @@ func (s *ChallengeService) LeaveChallenge(ctx context.Context, challengeId, user
 }
 
 func (s *ChallengeService) AbandonChallenge(ctx context.Context, req *challengePb.AbandonChallengeRequest) (*challengePb.AbandonChallengeResponse, error) {
-	// Fetch the challenge to verify the creator
-	challenge, err := s.repo.GetChallengeByID(ctx, req.ChallengeId)
+	// Fetch the challenge to verify the creator using Redis repository
+	challenge, err := s.redisRepo.GetChallengeByID(ctx, req.ChallengeId)
 	if err != nil {
 		return &challengePb.AbandonChallengeResponse{
 			Success:   false,
@@ -102,7 +133,7 @@ func (s *ChallengeService) AbandonChallenge(ctx context.Context, req *challengeP
 		}, nil
 	}
 
-	if err := s.repo.AbandonChallenge(ctx, req.CreatorId, req.ChallengeId); err != nil {
+	if err := s.redisRepo.AbandonChallenge(ctx, req.CreatorId, req.ChallengeId); err != nil {
 		return &challengePb.AbandonChallengeResponse{
 			Success:   false,
 			Message:   err.Error(),
@@ -110,28 +141,40 @@ func (s *ChallengeService) AbandonChallenge(ctx context.Context, req *challengeP
 		}, err
 	}
 
-	// Check for nil websocketState or Challenges map
-	if s.websocketState == nil || s.websocketState.Challenges == nil {
+	// Clean up leaderboard for abandoned challenge
+	if err := s.leaderboardManager.CleanupLeaderboard(req.ChallengeId); err != nil {
+		log.Printf("[AbandonChallenge] Warning: Failed to cleanup leaderboard for challenge %s: %v", req.ChallengeId, err)
+	}
+
+	// Trigger MongoDB persistence for ABANDONED challenge
+	if err := s.persistChallengeToMongoDB(ctx, req.ChallengeId); err != nil {
+		// Log the error but don't fail the abandon operation
+		fmt.Printf("Warning: Failed to persist abandoned challenge %s to MongoDB: %v\n", req.ChallengeId, err)
+	}
+
+	// Check for nil websocketState or LocalState
+	if s.websocketState == nil || s.websocketState.LocalState == nil {
 		// Log the issue (consider adding a proper logger instead of fmt)
-		fmt.Printf("Warning: websocketState or Challenges map is nil for challenge ID %s\n", req.ChallengeId)
+		fmt.Printf("Warning: websocketState or LocalState is nil for challenge ID %s\n", req.ChallengeId)
 		return &challengePb.AbandonChallengeResponse{Success: true}, nil
 	}
 
-	// Check if the challenge exists in the WebSocket state
-	challengeState, exists := s.websocketState.Challenges[challenge.ChallengeID]
-	if !exists {
+	// Get WebSocket clients for broadcasting
+	wsClients := s.websocketState.LocalState.GetAllWSClients(challenge.ChallengeID)
+	if len(wsClients) == 0 {
 		// Log the issue
-		fmt.Printf("Warning: Challenge ID %s not found in websocketState.Challenges\n", challenge.ChallengeID)
+		fmt.Printf("Warning: No WebSocket clients found for challenge ID %s\n", challenge.ChallengeID)
 		return &challengePb.AbandonChallengeResponse{Success: true}, nil
 	}
 
-	// Broadcast the abandon event
-	broadcasts.BroadcastChallengeAbandon(challengeState)
+	// Broadcast the abandon event using the new method with clients
+	broadcasts.BroadcastChallengeAbandonWithClients(wsClients, challenge.ChallengeID, challenge.CreatorID)
 
 	return &challengePb.AbandonChallengeResponse{Success: true}, nil
 }
 func (s *ChallengeService) GetFullChallengeData(ctx context.Context, req *challengePb.GetFullChallengeDataRequest) (*challengePb.GetFullChallengeDataResponse, error) {
-	challenge, err := s.repo.GetChallengeByID(ctx, req.ChallengeId)
+	// Read from Redis repository only - no MongoDB fallback for active challenge data
+	challenge, err := s.redisRepo.GetChallengeByID(ctx, req.ChallengeId)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +185,8 @@ func (s *ChallengeService) GetFullChallengeData(ctx context.Context, req *challe
 }
 
 func (s *ChallengeService) GetChallengeHistory(ctx context.Context, req *challengePb.GetChallengeHistoryRequest) (*challengePb.ChallengeListResponse, error) {
-	challenges, err := s.repo.GetChallengeHistory(ctx, req.UserId, int(req.GetPagination().GetPage()), int(req.GetPagination().GetPageSize()), req.GetIsPrivate())
+	// Historical data should come from MongoDB repository
+	challenges, err := s.mongoRepo.GetChallengeHistory(ctx, req.UserId, int(req.GetPagination().GetPage()), int(req.GetPagination().GetPageSize()), req.GetIsPrivate())
 	if err != nil {
 		return nil, err
 	}
@@ -153,9 +197,31 @@ func (s *ChallengeService) GetChallengeHistory(ctx context.Context, req *challen
 }
 
 func (s *ChallengeService) GetActiveOpenChallenges(ctx context.Context, req *challengePb.PaginationRequest) (*challengePb.ChallengeListResponse, error) {
-	challenges, err := s.repo.GetActiveOpenChallenges(ctx, int(req.Page), int(req.PageSize))
+	// For active challenges, use Redis repository only
+	challengeIDs, err := s.redisRepo.GetChallengesByStatus(ctx, string(model.ChallengeOpen))
 	if err != nil {
 		return nil, err
+	}
+
+	// Get challenge documents from Redis
+	var challenges []model.ChallengeDocument
+	for _, id := range challengeIDs {
+		challenge, err := s.redisRepo.GetChallengeByID(ctx, id)
+		if err != nil {
+			continue // Skip challenges that can't be retrieved
+		}
+		challenges = append(challenges, challenge)
+	}
+
+	// Apply pagination
+	start := int(req.Page) * int(req.PageSize)
+	end := start + int(req.PageSize)
+	if start > len(challenges) {
+		challenges = []model.ChallengeDocument{}
+	} else if end > len(challenges) {
+		challenges = challenges[start:]
+	} else {
+		challenges = challenges[start:end]
 	}
 
 	return &challengePb.ChallengeListResponse{
@@ -165,10 +231,36 @@ func (s *ChallengeService) GetActiveOpenChallenges(ctx context.Context, req *cha
 }
 
 func (s *ChallengeService) GetOwnersActiveChallenges(ctx context.Context, req *challengePb.GetOwnersActiveChallengesRequest) (*challengePb.ChallengeListResponse, error) {
-	challenges, err := s.repo.GetOwnersActiveChallenges(ctx, req.UserId, int(req.Pagination.Page), int(req.Pagination.PageSize))
+	// For active challenges owned by a user, use Redis repository only
+	challengeIDs, err := s.redisRepo.GetActiveChallenges(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	// Filter challenges by owner and get challenge documents from Redis
+	var challenges []model.ChallengeDocument
+	for _, id := range challengeIDs {
+		challenge, err := s.redisRepo.GetChallengeByID(ctx, id)
+		if err != nil {
+			continue // Skip challenges that can't be retrieved
+		}
+		// Only include challenges owned by the requesting user
+		if challenge.CreatorID == req.UserId {
+			challenges = append(challenges, challenge)
+		}
+	}
+
+	// Apply pagination
+	start := int(req.Pagination.Page) * int(req.Pagination.PageSize)
+	end := start + int(req.Pagination.PageSize)
+	if start > len(challenges) {
+		challenges = []model.ChallengeDocument{}
+	} else if end > len(challenges) {
+		challenges = challenges[start:]
+	} else {
+		challenges = challenges[start:end]
+	}
+
 	return &challengePb.ChallengeListResponse{
 		Challenges: ChallengesToProto(toPtrSlice(challenges), false),
 		TotalCount: int64(len(challenges)),
@@ -176,7 +268,161 @@ func (s *ChallengeService) GetOwnersActiveChallenges(ctx context.Context, req *c
 }
 
 func (s *ChallengeService) PushSubmissionStatus(ctx context.Context, req *challengePb.PushSubmissionStatusRequest) (*challengePb.PushSubmissionStatusResponse, error) {
-	return &challengePb.PushSubmissionStatusResponse{Message: "received", Success: true}, nil
+	// Extract submission data from request
+	challengeID := req.GetChallengeId()
+	userID := req.GetUserId()
+	problemID := req.GetProblemId()
+	score := int(req.GetScore())
+	submissionID := req.GetSubmissionId()
+	isSuccessful := req.GetIsSuccessful()
+	timeTaken := time.Duration(req.GetTimeTakenMillis()) * time.Millisecond
+
+	log.Printf("[PushSubmissionStatus] Processing submission: challenge=%s, user=%s, problem=%s, score=%d, successful=%v",
+		challengeID, userID, problemID, score, isSuccessful)
+
+	// Only process successful submissions for leaderboard updates
+	if !isSuccessful {
+		log.Printf("[PushSubmissionStatus] Submission unsuccessful, skipping leaderboard update")
+		return &challengePb.PushSubmissionStatusResponse{Message: "received unsuccessful submission", Success: true}, nil
+	}
+
+	// Get challenge from Redis to verify it exists and is active
+	challenge, err := s.redisRepo.GetChallengeByID(ctx, challengeID)
+	if err != nil {
+		log.Printf("[PushSubmissionStatus] Challenge not found: %v", err)
+		return &challengePb.PushSubmissionStatusResponse{Message: "challenge not found", Success: false}, err
+	}
+
+	// Verify user is a participant
+	participant, exists := challenge.Participants[userID]
+	if !exists {
+		log.Printf("[PushSubmissionStatus] User %s not a participant in challenge %s", userID, challengeID)
+		return &challengePb.PushSubmissionStatusResponse{Message: "user not a participant", Success: false}, nil
+	}
+
+	// Update submission data in Redis
+	submission := model.Submission{
+		SubmissionID: submissionID,
+		TimeTaken:    timeTaken,
+		Points:       score,
+	}
+
+	// Initialize submissions map if needed
+	if challenge.Submissions == nil {
+		challenge.Submissions = make(map[string]map[string]model.Submission)
+	}
+	if challenge.Submissions[userID] == nil {
+		challenge.Submissions[userID] = make(map[string]model.Submission)
+	}
+
+	// Store the submission
+	challenge.Submissions[userID][problemID] = submission
+
+	// Update participant metadata
+	if participant.ProblemsDone == nil {
+		participant.ProblemsDone = make(map[string]model.ChallengeProblemMetadata)
+	}
+	participant.ProblemsDone[problemID] = model.ChallengeProblemMetadata{
+		Score:     score,
+		TimeTaken: int64(timeTaken),
+	}
+
+	// Calculate new total score for the participant
+	totalScore := 0
+	for _, problemMeta := range participant.ProblemsDone {
+		totalScore += problemMeta.Score
+	}
+	participant.TotalScore = totalScore
+	participant.ProblemsAttempted = len(participant.ProblemsDone)
+
+	// Update participant in Redis
+	err = s.redisRepo.UpdateParticipant(ctx, challengeID, userID, participant)
+	if err != nil {
+		log.Printf("[PushSubmissionStatus] Failed to update participant: %v", err)
+		return &challengePb.PushSubmissionStatusResponse{Message: "failed to update participant", Success: false}, err
+	}
+
+	// Update challenge in Redis
+	err = s.redisRepo.UpdateChallenge(ctx, &challenge)
+	if err != nil {
+		log.Printf("[PushSubmissionStatus] Failed to update challenge: %v", err)
+		return &challengePb.PushSubmissionStatusResponse{Message: "failed to update challenge", Success: false}, err
+	}
+
+	// Initialize leaderboard if not already done
+	err = s.leaderboardManager.InitializeLeaderboard(challengeID)
+	if err != nil {
+		log.Printf("[PushSubmissionStatus] Failed to initialize leaderboard: %v", err)
+		// Continue processing even if leaderboard fails
+	}
+
+	// Update participant score in leaderboard
+	err = s.leaderboardManager.UpdateParticipantScore(challengeID, userID, totalScore)
+	if err != nil {
+		log.Printf("[PushSubmissionStatus] Failed to update leaderboard score: %v", err)
+		// Continue processing even if leaderboard update fails
+	}
+
+	// Get updated leaderboard for broadcasting
+	var leaderboard []*model.LeaderboardEntry
+	var newRank int = -1
+
+	// Get updated leaderboard data
+	leaderboard, err = s.leaderboardManager.GetLeaderboard(challengeID, 50) // Get top 50
+	if err != nil {
+		log.Printf("[PushSubmissionStatus] Failed to get leaderboard: %v", err)
+	}
+
+	// Get user's new rank
+	participantData, err := s.leaderboardManager.GetParticipantRank(challengeID, userID)
+	if err != nil {
+		log.Printf("[PushSubmissionStatus] Failed to get participant rank: %v", err)
+	} else {
+		newRank = participantData.Rank
+	}
+
+	// Broadcast events to WebSocket clients
+	if s.websocketState != nil && s.websocketState.LocalState != nil {
+		wsClients := s.websocketState.LocalState.GetAllWSClients(challengeID)
+
+		// Broadcast NEW_SUBMISSION event
+		s.broadcastNewSubmission(wsClients, challengeID, userID, problemID, score, newRank)
+
+		// Broadcast LEADERBOARD_UPDATE event if we have leaderboard data
+		if leaderboard != nil {
+			s.broadcastLeaderboardUpdate(wsClients, challengeID, leaderboard, userID)
+		}
+	}
+
+	log.Printf("[PushSubmissionStatus] Successfully processed submission for user %s in challenge %s, new total score: %d",
+		userID, challengeID, totalScore)
+
+	return &challengePb.PushSubmissionStatusResponse{Message: "submission processed successfully", Success: true}, nil
+}
+
+// EndChallenge ends a challenge and triggers MongoDB persistence
+func (s *ChallengeService) EndChallenge(ctx context.Context, challengeID, creatorID string) error {
+	// Fetch the challenge to verify the creator using Redis repository
+	challenge, err := s.redisRepo.GetChallengeByID(ctx, challengeID)
+	if err != nil {
+		return fmt.Errorf("challenge not found: %w", err)
+	}
+
+	if challenge.CreatorID != creatorID {
+		return errors.New("only the creator can end the challenge")
+	}
+
+	// Clean up leaderboard for ended challenge
+	if err := s.leaderboardManager.CleanupLeaderboard(challengeID); err != nil {
+		log.Printf("[EndChallenge] Warning: Failed to cleanup leaderboard for challenge %s: %v", challengeID, err)
+	}
+
+	// Update challenge status to ENDED using the helper method that triggers persistence
+	if err := s.updateChallengeStatus(ctx, challengeID, model.ChallengeEnded); err != nil {
+		return fmt.Errorf("failed to end challenge: %w", err)
+	}
+
+	return nil
 }
 
 func ChallengeDocumentFromProto(pb *challengePb.ChallengeRecord, hideProblems bool) *model.ChallengeDocument {
@@ -307,4 +553,95 @@ func toPtrSlice(in []model.ChallengeDocument) []*model.ChallengeDocument {
 		out[i] = &in[i]
 	}
 	return out
+}
+
+// persistChallengeToMongoDB transfers challenge data from Redis to MongoDB and cleans up Redis
+func (s *ChallengeService) persistChallengeToMongoDB(ctx context.Context, challengeID string) error {
+	// Get challenge data from Redis
+	challengeDoc, err := s.redisRepo.GetChallengeByID(ctx, challengeID)
+	if err != nil {
+		return fmt.Errorf("failed to get challenge from Redis: %w", err)
+	}
+
+	// Persist to MongoDB
+	if err := s.mongoRepo.PersistChallengeFromRedis(ctx, &challengeDoc); err != nil {
+		return fmt.Errorf("failed to persist challenge to MongoDB: %w", err)
+	}
+
+	// Clean up Redis data after successful MongoDB persistence
+	if err := s.redisRepo.DeleteChallenge(ctx, challengeID); err != nil {
+		// Log the error but don't fail the operation since MongoDB persistence succeeded
+		fmt.Printf("Warning: Failed to clean up Redis data for challenge %s: %v\n", challengeID, err)
+	}
+
+	return nil
+}
+
+// updateChallengeStatus updates challenge status and triggers persistence if needed
+func (s *ChallengeService) updateChallengeStatus(ctx context.Context, challengeID string, newStatus model.ChallengeStatus) error {
+	// Get current challenge from Redis
+	challenge, err := s.redisRepo.GetChallenge(ctx, challengeID)
+	if err != nil {
+		return fmt.Errorf("failed to get challenge: %w", err)
+	}
+
+	// Update status
+	challenge.Status = newStatus
+	if err := s.redisRepo.UpdateChallenge(ctx, challenge); err != nil {
+		return fmt.Errorf("failed to update challenge status: %w", err)
+	}
+
+	// Check if we need to trigger MongoDB persistence
+	if newStatus == model.ChallengeAbandon || newStatus == model.ChallengeEnded {
+		if err := s.persistChallengeToMongoDB(ctx, challengeID); err != nil {
+			// Log the error but don't fail the status update
+			fmt.Printf("Warning: Failed to persist challenge %s to MongoDB after status change to %s: %v\n", challengeID, newStatus, err)
+		}
+	}
+
+	return nil
+}
+
+// broadcastNewSubmission broadcasts NEW_SUBMISSION event to WebSocket clients
+func (s *ChallengeService) broadcastNewSubmission(wsClients map[string]*websocket.Conn, challengeID, userID, problemID string, score, newRank int) {
+	for _, conn := range wsClients {
+		if conn == nil {
+			continue
+		}
+
+		broadcasts.SendJSON(conn, map[string]interface{}{
+			"type":    wsstypes.NEW_SUBMISSION,
+			"status":  "ok",
+			"message": "New submission processed",
+			"payload": map[string]interface{}{
+				"challengeId": challengeID,
+				"userId":      userID,
+				"problemId":   problemID,
+				"score":       score,
+				"newRank":     newRank,
+				"time":        time.Now(),
+			},
+		})
+	}
+}
+
+// broadcastLeaderboardUpdate broadcasts LEADERBOARD_UPDATE event to WebSocket clients
+func (s *ChallengeService) broadcastLeaderboardUpdate(wsClients map[string]*websocket.Conn, challengeID string, leaderboard []*model.LeaderboardEntry, updatedUser string) {
+	for _, conn := range wsClients {
+		if conn == nil {
+			continue
+		}
+
+		broadcasts.SendJSON(conn, map[string]interface{}{
+			"type":    wsstypes.LEADERBOARD_UPDATE,
+			"status":  "ok",
+			"message": "Leaderboard updated",
+			"payload": map[string]interface{}{
+				"challengeId": challengeID,
+				"leaderboard": leaderboard,
+				"updatedUser": updatedUser,
+				"time":        time.Now(),
+			},
+		})
+	}
 }

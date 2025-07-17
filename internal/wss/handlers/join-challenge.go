@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/config"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/wss/broadcasts"
@@ -78,30 +76,11 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 
 	log.Printf("[%s] [JoinChallenge] Authenticated user ID: %s", requestID, userData.UserID)
 
-	// repo challenge access
+	// Load challenge from Redis
 	startRepoCheck := time.Now()
-	ok, err := ctx.State.Repo.CheckChallengeAccess(context.Background(), payload.ChallengeId, userData.UserID, payload.Password)
+	challengeDoc, err := ctx.State.Redis.GetChallengeByID(context.Background(), payload.ChallengeId)
 	if err != nil {
-		log.Printf("[%s] [JoinChallenge] Repo access error: %v", requestID, err)
-		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge access check failed", nil)
-	}
-	if !ok {
-		log.Printf("[%s] [JoinChallenge] Access denied to challenge %s", requestID, payload.ChallengeId)
-		
-		//close ws connection if not eligible
-		ctx.Conn.Close()
-		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Invalid challenge ID or password", nil)
-	}
-
-	log.Printf("[%s] [JoinChallenge] Access granted for challenge %s (took %v)", requestID, payload.ChallengeId, time.Since(startRepoCheck))
-
-	// memory state
-	ctx.State.Mu.Lock()
-	defer ctx.State.Mu.Unlock()
-
-	challengeDoc, err := ctx.State.Repo.GetChallengeByID(context.Background(), payload.ChallengeId)
-	if err != nil {
-		log.Printf("[WS] DB load error: %v", err)
+		log.Printf("[%s] [JoinChallenge] Challenge not found in Redis: %v", requestID, err)
 		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge not found", nil)
 	}
 
@@ -109,23 +88,24 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge is abandoned", nil)
 	}
 
-	challenge, exists := ctx.State.Challenges[payload.ChallengeId]
-	if !exists {
-		log.Printf("[WS] Challenge %s not in memory, loading...", payload.ChallengeId)
-		challenge = ConvertChallengeDocToChallenge(&challengeDoc)
-		ctx.State.Challenges[payload.ChallengeId] = challenge
-		log.Printf("[WS] Loaded challenge %s into memory", payload.ChallengeId)
+	// Check access (simplified - checking password if private)
+	if challengeDoc.IsPrivate && challengeDoc.Password != payload.Password {
+		log.Printf("[%s] [JoinChallenge] Access denied to challenge %s", requestID, payload.ChallengeId)
+		ctx.Conn.Close()
+		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Invalid challenge ID or password", nil)
 	}
 
-	participant, exists := challenge.Participants[userData.UserID]
+	log.Printf("[%s] [JoinChallenge] Access granted for challenge %s (took %v)", requestID, payload.ChallengeId, time.Since(startRepoCheck))
+
+	// Add/update participant in Redis
+	participant, exists := challengeDoc.Participants[userData.UserID]
 	if !exists {
 		participant = &model.ParticipantMetadata{
 			ProblemsDone:  make(map[string]model.ChallengeProblemMetadata),
 			JoinTime:      time.Now().Unix(),
 			InitialJoinIP: clientIP,
 		}
-		challenge.Participants[userData.UserID] = participant
-		err := ctx.State.Repo.AddParticipantInJoinPhase(context.Background(), payload.ChallengeId, userData.UserID, participant)
+		err := ctx.State.Redis.AddParticipant(context.Background(), payload.ChallengeId, userData.UserID, participant)
 		if err != nil {
 			log.Printf("[%s] [JoinChallenge] Failed to persist participant: %v", requestID, err)
 		}
@@ -135,9 +115,18 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 	}
 	participant.LastConnected = time.Now().Unix()
 
-	// ws session + broadcast
-	challenge.WSClients[userData.UserID] = ctx.Conn
-	broadcasts.BroadcastEntityJoined(challenge, userData.UserID, payload.ChallengeId, userData.UserID == challenge.CreatorID)
+	// Update participant in Redis
+	err = ctx.State.Redis.UpdateParticipant(context.Background(), payload.ChallengeId, userData.UserID, participant)
+	if err != nil {
+		log.Printf("[%s] [JoinChallenge] Failed to update participant: %v", requestID, err)
+	}
+
+	// Add WebSocket connection to local state
+	ctx.State.LocalState.AddWSClient(payload.ChallengeId, userData.UserID, ctx.Conn)
+
+	// Get all WebSocket clients for broadcasting
+	wsClients := ctx.State.LocalState.GetAllWSClients(payload.ChallengeId)
+	broadcasts.BroadcastEntityJoinedWithClients(wsClients, userData.UserID, payload.ChallengeId, userData.UserID == challengeDoc.CreatorID)
 
 	return broadcasts.SendJSON(ctx.Conn, map[string]interface{}{
 		"type":    wsstypes.JOIN_CHALLENGE,
@@ -146,32 +135,7 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 		"payload": map[string]interface{}{
 			"userId":      userData.UserID,
 			"challengeId": payload.ChallengeId,
-			"challenge":   challenge,
+			"challenge":   challengeDoc,
 		},
 	})
-}
-
-func ConvertChallengeDocToChallenge(doc *model.ChallengeDocument) *model.Challenge {
-	return &model.Challenge{
-		ChallengeID:         doc.ChallengeID,
-		CreatorID:           doc.CreatorID,
-		CreatedAt:           doc.CreatedAt,
-		Title:               doc.Title,
-		IsPrivate:           doc.IsPrivate,
-		Password:            doc.Password,
-		Status:              doc.Status,
-		TimeLimit:           doc.TimeLimit,
-		StartTime:           doc.StartTime,
-		Participants:        doc.Participants,
-		Submissions:         doc.Submissions,
-		Leaderboard:         doc.Leaderboard,
-		Config:              doc.Config,
-		ProcessedProblemIds: doc.ProcessedProblemIds,
-
-		//these are runtime-only fields, not persisted
-		Sessions:  make(map[string]*model.Session),
-		WSClients: make(map[string]*websocket.Conn),
-		MU:        sync.RWMutex{},
-		EventChan: make(chan model.Event, 100),
-	}
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/constants"
 )
 
 const (
@@ -17,12 +18,13 @@ const (
 
 type ChallengeStatus string
 
-const ChallengeOpen = "CHALLENGEOPEN"
-const ChallengeClose = "CHALLENGECLOSE"
-const ChallengeStarted = "CHALLENGESTARTED"
-const ChallengeForfieted = "CHALLENGEFORFIETED"
-const ChallengeEnded = "CHALLENGEENDED"
-const ChallengeAbandon = "CHALLENGEABANDON"
+const (
+	ChallengeOpen      = constants.CHALLENGE_OPEN
+	ChallengeStarted   = constants.CHALLENGE_STARTED
+	ChallengeForfieted = constants.CHALLENGE_FORFEITED
+	ChallengeEnded     = constants.CHALLENGE_ENDED
+	ChallengeAbandon   = constants.CHALLENGE_ABANDON
+)
 
 type QuestionDifficulty string
 
@@ -47,19 +49,19 @@ type ChallengeConfig struct {
 }
 
 type Challenge struct {
-	ChallengeID  string                           `bson:"challengeId" json:"challengeId"`
-	CreatorID    string                           `bson:"creatorId" json:"creatorId"`
-	CreatedAt    int64                            `bson:"createdAt" json:"createdAt"`
-	Title        string                           `bson:"title" json:"title"`
-	IsPrivate    bool                             `bson:"isPrivate" json:"isPrivate"`
-	Password     string                           `bson:"password" json:"password"`
-	Status       ChallengeStatus                  `bson:"status" json:"status"`
-	TimeLimit    int64                            `bson:"timeLimit" json:"timeLimit"`
-	StartTime    int64                            `bson:"startTime" json:"startTime"`
-	Participants map[string]*ParticipantMetadata  `bson:"participants" json:"participants"`
-	Submissions  map[string]map[string]Submission `bson:"submissions" json:"submissions"`
-	Leaderboard  []*LeaderboardEntry              `bson:"leaderboard" json:"leaderboard"`
-	Config       *ChallengeConfig                 `bson:"config" json:"config"`
+	ChallengeID         string                           `bson:"challengeId" json:"challengeId"`
+	CreatorID           string                           `bson:"creatorId" json:"creatorId"`
+	CreatedAt           int64                            `bson:"createdAt" json:"createdAt"`
+	Title               string                           `bson:"title" json:"title"`
+	IsPrivate           bool                             `bson:"isPrivate" json:"isPrivate"`
+	Password            string                           `bson:"password" json:"password"`
+	Status              ChallengeStatus                  `bson:"status" json:"status"`
+	TimeLimit           int64                            `bson:"timeLimit" json:"timeLimit"`
+	StartTime           int64                            `bson:"startTime" json:"startTime"`
+	Participants        map[string]*ParticipantMetadata  `bson:"participants" json:"participants"`
+	Submissions         map[string]map[string]Submission `bson:"submissions" json:"submissions"`
+	Leaderboard         []*LeaderboardEntry              `bson:"leaderboard" json:"leaderboard"`
+	Config              *ChallengeConfig                 `bson:"config" json:"config"`
 	ProcessedProblemIds []string                         `bson:"processedProblemIds" json:"processedProblemIds"`
 
 	Sessions  map[string]*Session        `bson:"-" json:"-"`

@@ -3,37 +3,12 @@ package broadcasts
 import (
 	"time"
 
-	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
+	"github.com/gorilla/websocket"
 	wsstypes "github.com/lijuuu/ChallengeWssManagerService/internal/wss/types"
 )
 
-func BroadcastEntityLeft(challenge *model.Challenge, userID, challengeID string, owner bool) {
-	for _, conn := range challenge.WSClients {
-		if conn == nil {
-			continue
-		}
-		evtype := wsstypes.USER_LEFT
-		message := "User has Left the challenge"
-		if owner {
-			evtype = wsstypes.OWNER_LEFT
-			message = "Owner has Left the challenge"
-
-		}
-		SendJSON(conn, map[string]interface{}{
-			"type":    evtype,
-			"status":  "ok",
-			"message": message,
-			"payload": map[string]interface{}{
-				"userId":      userID,
-				"challengeId": challengeID,
-				"time":        time.Now(),
-			},
-		})
-	}
-}
-
-func BroadcastEntityJoined(challenge *model.Challenge, userID, challengeID string, isOwner bool) {
-	for _, conn := range challenge.WSClients {
+func BroadcastEntityJoinedWithClients(wsClients map[string]*websocket.Conn, userID, challengeID string, isOwner bool) {
+	for _, conn := range wsClients {
 		if conn == nil {
 			continue
 		}
@@ -58,12 +33,32 @@ func BroadcastEntityJoined(challenge *model.Challenge, userID, challengeID strin
 	}
 }
 
-func BroadcastChallengeAbandon(challenge *model.Challenge) {
-	if challenge == nil{
-		return
+func BroadcastEntityLeftWithClients(wsClients map[string]*websocket.Conn, userID, challengeID string, owner bool) {
+	for _, conn := range wsClients {
+		if conn == nil {
+			continue
+		}
+		evtype := wsstypes.USER_LEFT
+		message := "User has Left the challenge"
+		if owner {
+			evtype = wsstypes.OWNER_LEFT
+			message = "Owner has Left the challenge"
+		}
+		SendJSON(conn, map[string]interface{}{
+			"type":    evtype,
+			"status":  "ok",
+			"message": message,
+			"payload": map[string]interface{}{
+				"userId":      userID,
+				"challengeId": challengeID,
+				"time":        time.Now(),
+			},
+		})
 	}
-	
-	for _, conn := range challenge.WSClients {
+}
+
+func BroadcastChallengeAbandonWithClients(wsClients map[string]*websocket.Conn, challengeID, creatorID string) {
+	for _, conn := range wsClients {
 		if conn == nil {
 			continue
 		}
@@ -73,8 +68,8 @@ func BroadcastChallengeAbandon(challenge *model.Challenge) {
 			"status":  "ok",
 			"message": "Creator abandoned the challenge",
 			"payload": map[string]interface{}{
-				"challengeId": challenge.ChallengeID,
-				"userId":      challenge.CreatorID,
+				"challengeId": challengeID,
+				"userId":      creatorID,
 				"time":        time.Now(),
 			},
 		})

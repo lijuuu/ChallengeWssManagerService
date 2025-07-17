@@ -72,29 +72,28 @@ func cleanupConnection(state *wsstypes.State, userID, challengeID string) {
 
 	log.Printf("[WS] cleaning up session: user=%s challenge=%s", userID, challengeID)
 
-	state.Mu.Lock()
-	defer state.Mu.Unlock()
-
-	if err := state.Repo.RemoveParticipantInJoinPhase(context.Background(), challengeID, userID); err != nil {
-		log.Printf("[Repo] failed to remove from DB: %v", err)
+	// Remove participant from Redis
+	if err := state.Redis.RemoveParticipantInJoinPhase(context.Background(), challengeID, userID); err != nil {
+		log.Printf("[Redis] failed to remove from Redis: %v", err)
 	} else {
-		log.Printf("[Repo] user %s removed from DB for challenge %s", userID, challengeID)
+		log.Printf("[Redis] user %s removed from Redis for challenge %s", userID, challengeID)
 	}
 
-	challenge, exists := state.Challenges[challengeID]
-	if !exists {
-		log.Printf("[WS] challenge %s not found in memory", challengeID)
-		return
+	// Get challenge info for broadcast before removing connection
+	challengeDoc, err := state.Redis.GetChallengeByID(context.Background(), challengeID)
+	if err != nil {
+		log.Printf("[WS] failed to get challenge for cleanup broadcast: %v", err)
 	}
 
-	challenge.MU.Lock()
-	defer challenge.MU.Unlock()
+	// Remove WebSocket connection from local state
+	state.LocalState.RemoveWSClient(challengeID, userID)
+	state.LocalState.RemoveSession(challengeID, userID)
 
-	delete(challenge.Participants, userID)
-	delete(challenge.Sessions, userID)
-	delete(challenge.WSClients, userID)
+	log.Printf("[WS] user %s removed from local state for challenge %s", userID, challengeID)
 
-	log.Printf("[WS] user %s removed from in-memory challenge %s", userID, challengeID)
-
-	broadcasts.BroadcastEntityLeft(challenge, userID, challengeID, userID == challenge.CreatorID)
+	// Broadcast user left to remaining clients
+	if err == nil {
+		wsClients := state.LocalState.GetAllWSClients(challengeID)
+		broadcasts.BroadcastEntityLeftWithClients(wsClients, userID, challengeID, userID == challengeDoc.CreatorID)
+	}
 }

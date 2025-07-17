@@ -202,3 +202,40 @@ func (r *MongoRepository) CheckChallengeAccess(ctx context.Context, challengeId,
 
 	return true, nil
 }
+
+// PersistChallengeFromRedis persists challenge data from Redis to MongoDB for historical storage
+func (r *MongoRepository) PersistChallengeFromRedis(ctx context.Context, challenge *model.ChallengeDocument) error {
+	if challenge == nil {
+		return errors.New("challenge cannot be nil")
+	}
+
+	// Check if challenge already exists in MongoDB
+	filter := bson.M{"challengeId": challenge.ChallengeID}
+	var existingChallenge model.ChallengeDocument
+	err := r.challenges.FindOne(ctx, filter).Decode(&existingChallenge)
+
+	if err == mongo.ErrNoDocuments {
+		// Challenge doesn't exist, insert it
+		_, err = r.challenges.InsertOne(ctx, challenge)
+		return err
+	} else if err != nil {
+		// Some other error occurred
+		return fmt.Errorf("failed to check existing challenge: %w", err)
+	}
+
+	// Challenge exists, update it
+	update := bson.M{
+		"$set": bson.M{
+			"status":              challenge.Status,
+			"participants":        challenge.Participants,
+			"submissions":         challenge.Submissions,
+			"leaderboard":         challenge.Leaderboard,
+			"startTime":           challenge.StartTime,
+			"processedProblemIds": challenge.ProcessedProblemIds,
+			"problemCount":        challenge.ProblemCount,
+		},
+	}
+
+	_, err = r.challenges.UpdateOne(ctx, filter, update)
+	return err
+}

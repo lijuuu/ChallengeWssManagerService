@@ -1,17 +1,17 @@
 package wsstypes
 
 import (
-	"sync"
-
 	"github.com/gorilla/websocket"
-	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/constants"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/repo"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/state"
 )
 
 type State struct {
-	Repo       repo.MongoRepository
-	Challenges map[string]*model.Challenge
-	Mu         sync.RWMutex
+	Redis              *repo.RedisRepository
+	Repo               *repo.MongoRepository
+	LocalState         *state.LocalStateManager
+	LeaderboardManager LeaderboardService
 }
 
 type WsContext struct {
@@ -55,17 +55,20 @@ type ErrorInfo struct {
 }
 
 const (
-	PING_SERVER = "PING_SERVER"
+	PING_SERVER = constants.PING_SERVER
 
-	USER_JOINED       = "USER_JOINED"
-	USER_LEFT         = "USER_LEFT"
-	CREATOR_ABANDON   = "CREATOR_ABANDON"
-	CHALLENGE_STARTED = "CHALLENGE_STARTED"
-	OWNER_LEFT        = "OWNER_LEFT"
-	OWNER_JOINED      = "OWNER_JOINED"
+	USER_JOINED       = constants.USER_JOINED
+	USER_LEFT         = constants.USER_LEFT
+	CREATOR_ABANDON   = constants.CREATOR_ABANDON
+	CHALLENGE_STARTED = constants.CHALLENGE_STARTED
+	OWNER_LEFT        = constants.OWNER_LEFT
+	OWNER_JOINED      = constants.OWNER_JOINED
 
-	NEW_OWNER_ASSIGNED = "NEW_OWNER_ASSIGNED"
+	NEW_OWNER_ASSIGNED = constants.NEW_OWNER_ASSIGNED
 
-	JOIN_CHALLENGE    = "JOIN_CHALLENGE"
-	REFETCH_CHALLENGE = "REFETCH_CHALLENGE"
+	JOIN_CHALLENGE      = constants.JOIN_CHALLENGE
+	REFETCH_CHALLENGE   = constants.REFETCH_CHALLENGE
+	CURRENT_LEADERBOARD = constants.CURRENT_LEADERBOARD
+	LEADERBOARD_UPDATE  = constants.LEADERBOARD_UPDATE
+	NEW_SUBMISSION      = constants.NEW_SUBMISSION
 )
