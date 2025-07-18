@@ -1,29 +1,35 @@
 package wsstypes
 
 import (
+	"time"
+
 	"github.com/gorilla/websocket"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/constants"
-	"github.com/lijuuu/ChallengeWssManagerService/internal/repo"
-	"github.com/lijuuu/ChallengeWssManagerService/internal/state"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/global"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/jwt"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
 )
 
-type State struct {
-	Redis              *repo.RedisRepository
-	Repo               *repo.MongoRepository
-	LocalState         *state.LocalStateManager
-	LeaderboardManager LeaderboardService
-}
-
 type WsContext struct {
-	Conn    *websocket.Conn
-	Payload map[string]any
-	UserID  string
-	State   *State
+	Conn      *websocket.Conn
+	Payload   map[string]any
+	UserID    string
+	EventType string
+	State     *global.State
+	Claims    *jwt.CustomClaims
 }
 
-type WsMessage struct {
+type WsMessageRequest struct {
 	Type    string         `json:"type"`
 	Payload map[string]any `json:"payload"`
+}
+
+// StandardBroadcastMessage provides a consistent format for all WebSocket broadcasts
+type StandardBroadcastMessage struct {
+	Type    string  `json:"type"`
+	Payload any     `json:"payload"`
+	Success bool    `json:"success"`
+	Error   *string `json:"error"`
 }
 
 type JoinChallengePayload struct {
@@ -34,7 +40,7 @@ type JoinChallengePayload struct {
 	Token       string `json:"token"`
 }
 
-type RefetchChallengePayload struct {
+type RetreiveChallengePayload struct {
 	UserId      string `json:"userId"`
 	Type        string `json:"type"`
 	ChallengeId string `json:"challengeId"`
@@ -54,6 +60,26 @@ type ErrorInfo struct {
 	Details   string `json:"details"`
 }
 
+// Enhanced payload types that include challenge document data directly
+
+// LeaderboardUpdatePayload contains leaderboard data with full challenge context
+type LeaderboardUpdatePayload struct {
+	ChallengeID string                    `json:"challengeId"`
+	Leaderboard []*model.LeaderboardEntry `json:"leaderboard"`
+	UpdatedUser string                    `json:"updatedUser"`
+	Time        time.Time                 `json:"time"`
+}
+
+// NewSubmissionPayload contains submission data with full challenge context
+type NewSubmissionPayload struct {
+	ChallengeID string    `json:"challengeId"`
+	UserID      string    `json:"userId"`
+	ProblemID   string    `json:"problemId"`
+	Score       int       `json:"score"`
+	NewRank     int       `json:"newRank"`
+	Time        time.Time `json:"time"`
+}
+
 const (
 	PING_SERVER = constants.PING_SERVER
 
@@ -67,7 +93,7 @@ const (
 	NEW_OWNER_ASSIGNED = constants.NEW_OWNER_ASSIGNED
 
 	JOIN_CHALLENGE      = constants.JOIN_CHALLENGE
-	REFETCH_CHALLENGE   = constants.REFETCH_CHALLENGE
+	RETRIEVE_CHALLENGE  = constants.RETRIEVE_CHALLENGE
 	CURRENT_LEADERBOARD = constants.CURRENT_LEADERBOARD
 	LEADERBOARD_UPDATE  = constants.LEADERBOARD_UPDATE
 	NEW_SUBMISSION      = constants.NEW_SUBMISSION

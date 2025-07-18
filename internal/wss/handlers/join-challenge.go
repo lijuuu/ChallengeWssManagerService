@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/config"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/constants"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/wss/broadcasts"
 	wsstypes "github.com/lijuuu/ChallengeWssManagerService/internal/wss/types"
@@ -128,6 +129,8 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 	wsClients := ctx.State.LocalState.GetAllWSClients(payload.ChallengeId)
 	broadcasts.BroadcastEntityJoinedWithClients(wsClients, userData.UserID, payload.ChallengeId, userData.UserID == challengeDoc.CreatorID)
 
+	newToken, _ := ctx.State.JwtManager.GenerateToken(payload.UserId, payload.ChallengeId, time.Duration(challengeDoc.TimeLimit)+constants.BufferTime)
+
 	return broadcasts.SendJSON(ctx.Conn, map[string]interface{}{
 		"type":    wsstypes.JOIN_CHALLENGE,
 		"status":  "success",
@@ -136,6 +139,7 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 			"userId":      userData.UserID,
 			"challengeId": payload.ChallengeId,
 			"challenge":   challengeDoc,
+			"token":       newToken,
 		},
 	})
 }

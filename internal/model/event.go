@@ -44,7 +44,7 @@ type LeaderboardUpdatedPayload struct {
 
 type ChallengeStatusChangedPayload struct {
 	ChallengeID string          `json:"challenge_id"`
-	Status      ChallengeStatus `json:"status"`
+	Status      string `json:"status"`
 }
 
 type TimeUpdatePayload struct {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/constants"
-	"github.com/lijuuu/ChallengeWssManagerService/internal/service"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/leaderboard"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/wss/broadcasts"
 	wsstypes "github.com/lijuuu/ChallengeWssManagerService/internal/wss/types"
 )
@@ -20,7 +20,7 @@ type GetLeaderboardPayload struct {
 }
 
 // NewGetLeaderboardHandler creates a handler with the leaderboard service dependency
-func NewGetLeaderboardHandler(leaderboardService service.LeaderboardService) func(*wsstypes.WsContext) error {
+func NewGetLeaderboardHandler(leaderboardService *leaderboard.LeaderboardManager) func(*wsstypes.WsContext) error {
 	return func(ctx *wsstypes.WsContext) error {
 		return getLeaderboardHandler(ctx, leaderboardService)
 	}
@@ -32,7 +32,7 @@ func GetLeaderboardHandler(ctx *wsstypes.WsContext) error {
 	return broadcasts.SendErrorWithType(ctx.Conn, constants.CURRENT_LEADERBOARD, "Leaderboard service not configured", nil)
 }
 
-func getLeaderboardHandler(ctx *wsstypes.WsContext, leaderboardService service.LeaderboardService) error {
+func getLeaderboardHandler(ctx *wsstypes.WsContext, leaderboardService *leaderboard.LeaderboardManager) error {
 	requestID := uuid.New().String()
 
 	var payload GetLeaderboardPayload
@@ -57,7 +57,7 @@ func getLeaderboardHandler(ctx *wsstypes.WsContext, leaderboardService service.L
 	// Set default limit if not provided
 	limit := payload.Limit
 	if limit <= 0 {
-		limit = 50 // Default to top 50
+		limit = 100
 	}
 
 	// Verify challenge exists in Redis
@@ -76,7 +76,7 @@ func getLeaderboardHandler(ctx *wsstypes.WsContext, leaderboardService service.L
 	}
 
 	// Get current leaderboard using the injected service
-	leaderboard, err := leaderboardService.GetLeaderboard(payload.ChallengeId, limit)
+	leaderboard, err := leaderboardService.GetLeaderboard(payload.ChallengeId, limit, &challengeDoc)
 	if err != nil {
 		log.Printf("[%s] [GetLeaderboard] Failed to get leaderboard: %v", requestID, err)
 		return broadcasts.SendErrorWithType(ctx.Conn, constants.CURRENT_LEADERBOARD, "Failed to retrieve leaderboard", nil)

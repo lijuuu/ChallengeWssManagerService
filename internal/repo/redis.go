@@ -178,3 +178,39 @@ func (r *RedisRepository) GetRedisAddr() string {
 func (r *RedisRepository) GetRedisPassword() string {
 	return r.client.Options().Password
 }
+
+// CanJoin checks if a user can join a challenge
+// Returns false if user is already the creator or already a participant
+func (r *RedisRepository) CanJoin(ctx context.Context, challengeID, userID string) (bool, error) {
+	if challengeID == "" || userID == "" {
+		return false, fmt.Errorf("challengeID and userID cannot be empty")
+	}
+
+	challenge, err := r.GetChallenge(ctx, challengeID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get challenge: %w", err)
+	}
+
+	// Check if user is the creator
+	if challenge.CreatorID == userID {
+		return false, fmt.Errorf("user is the creator of this challenge")
+	}
+
+	// Check if user is already a participant
+	if challenge.Participants != nil {
+		if _, exists := challenge.Participants[userID]; exists {
+			return false, fmt.Errorf("user is already a participant in this challenge")
+		}
+	}
+
+	// Check if challenge is in a joinable state
+	if challenge.Status == model.ChallengeAbandon {
+		return false, fmt.Errorf("challenge is abandoned")
+	}
+
+	if challenge.Status == model.ChallengeEnded {
+		return false, fmt.Errorf("challenge has ended")
+	}
+
+	return true, nil
+}

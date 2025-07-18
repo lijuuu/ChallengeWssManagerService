@@ -12,9 +12,12 @@ import (
 
 	"github.com/lijuuu/ChallengeWssManagerService/internal/config"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/db"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/global"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/jwt"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/leaderboard"
+	localstate "github.com/lijuuu/ChallengeWssManagerService/internal/local"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/repo"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/service"
-	"github.com/lijuuu/ChallengeWssManagerService/internal/state"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/wss"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/wss/broadcasts"
 	wsshandler "github.com/lijuuu/ChallengeWssManagerService/internal/wss/handlers"
@@ -43,32 +46,62 @@ func main() {
 		log.Printf("Warning: Failed to load Redis data: %v", err)
 	}
 
+	jwtManager := jwt.NewJWTManager(config.LoadConfig().JWTSecret)
+
 	// Initialize repositories
-	challengeRepo := repo.NewMongoRepository(mongoInstance, "challengeDB")
+	mongoRepo := repo.NewMongoRepository(mongoInstance, "challengeDB")
 	redisRepo := repo.NewRedisRepository(redisClient)
 
 	// Initialize local state manager
-	localStateManager := state.NewLocalStateManager()
+	localStateManager := localstate.NewLocalStateManager()
 
 	// Initialize leaderboard service
-	leaderboardManager := service.NewLeaderboardManager(cfg.RedisURL, cfg.RedisPassword)
+	leaderboardManager := leaderboard.NewLeaderboardManager(cfg.RedisURL, cfg.RedisPassword)
 
 	// Initialize WebSocket state with both repositories and local state manager
-	websocketState := &wsstypes.State{
+	websocketState := &global.State{
 		Redis:      redisRepo,
-		Repo:       challengeRepo,
+		Mongo:      mongoRepo,
 		LocalState: localStateManager,
+		JwtManager: jwtManager,
 	}
 
 	// Initialize service with both repositories and WebSocket state
-	challengeService := service.NewChallengeService(challengeRepo, redisRepo, websocketState)
+	challengeService := service.NewChallengeService(websocketState)
 
 	// Start gRPC server in a goroutine
 	go runGRPCServer(&cfg, challengeService)
 
 	dispatcher := wss.NewDispatcher()
 
-	//ping for latency check
+	// Simple JWT verification middleware
+	jwtMiddleware := func(ctx *wsstypes.WsContext) error {
+		// Extract token from payload
+		var token string
+		if tokenVal, exists := ctx.Payload["token"]; exists {
+			if tokenStr, ok := tokenVal.(string); ok {
+				token = tokenStr
+			}
+		}
+
+		if token == "" {
+			return broadcasts.SendErrorWithType(ctx.Conn, "AUTH_ERROR", "Authentication token required", nil)
+		}
+
+		// Validate JWT token
+		claims, err := jwtManager.ValidateToken(token)
+		if err != nil {
+			return broadcasts.SendErrorWithType(ctx.Conn, "AUTH_ERROR", "Invalid or expired token", nil)
+		}
+
+		// Store claims in context for handler use
+		ctx.Claims = claims
+		ctx.UserID = claims.UserID
+
+		return nil
+	}
+
+	//ping for latency check - no authentication needed
 	dispatcher.Register(wsstypes.PING_SERVER, func(wc *wsstypes.WsContext) error {
 		/*
 			//to imitate irl latencies - use math/rand instead of crypto/rand
@@ -82,14 +115,14 @@ func main() {
 		})
 	})
 
-	//join challenge
+	//join challenge - no authentication needed (generates token)
 	dispatcher.Register(wsstypes.JOIN_CHALLENGE, wsshandler.JoinChallengeHandler)
 
-	//refetch challenge
-	dispatcher.Register(wsstypes.REFETCH_CHALLENGE, wsshandler.RefetchChallenge)
+	//refetch challenge - requires authentication
+	dispatcher.RegisterWithMiddleware(wsstypes.RETRIEVE_CHALLENGE, wsshandler.RetreiveChallenge, jwtMiddleware)
 
-	//get leaderboard
-	dispatcher.Register(wsstypes.CURRENT_LEADERBOARD, wsshandler.NewGetLeaderboardHandler(leaderboardManager))
+	//get leaderboard - requires authentication
+	dispatcher.RegisterWithMiddleware(wsstypes.CURRENT_LEADERBOARD, wsshandler.NewGetLeaderboardHandler(leaderboardManager), jwtMiddleware)
 
 	http.HandleFunc("/ws", wss.WsHandler(dispatcher, websocketState))
 

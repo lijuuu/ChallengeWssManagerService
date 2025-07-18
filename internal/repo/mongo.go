@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/google/uuid"
+	// "github.com/google/uuid"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -22,13 +22,40 @@ func NewMongoRepository(client *mongo.Client, dbName string) *MongoRepository {
 	}
 }
 
-// CreateChallenge inserts a new challenge
-func (r *MongoRepository) CreateChallenge(ctx context.Context, c *model.ChallengeDocument) error {
-	c.ChallengeID = uuid.New().String()
-	c.Status = model.ChallengeOpen
+// PersistChallengeFromRedis persists challenge data from Redis to MongoDB for historical storage
+func (r *MongoRepository) PersistChallengeFromRedis(ctx context.Context, challenge *model.ChallengeDocument) error {
+	if challenge == nil {
+		return errors.New("challenge cannot be nil")
+	}
 
-	c.ProblemCount = int64(len(c.ProcessedProblemIds))
-	_, err := r.challenges.InsertOne(ctx, c)
+	// Check if challenge already exists in MongoDB
+	filter := bson.M{"challengeId": challenge.ChallengeID}
+	var existingChallenge model.ChallengeDocument
+	err := r.challenges.FindOne(ctx, filter).Decode(&existingChallenge)
+
+	if err == mongo.ErrNoDocuments {
+		// Challenge doesn't exist, insert it
+		_, err = r.challenges.InsertOne(ctx, challenge)
+		return err
+	} else if err != nil {
+		// Some other error occurred
+		return fmt.Errorf("failed to check existing challenge: %w", err)
+	}
+
+	// Challenge exists, update it
+	update := bson.M{
+		"$set": bson.M{
+			"status":              challenge.Status,
+			"participants":        challenge.Participants,
+			"submissions":         challenge.Submissions,
+			"leaderboard":         challenge.Leaderboard,
+			"startTime":           challenge.StartTime,
+			"processedProblemIds": challenge.ProcessedProblemIds,
+			"problemCount":        challenge.ProblemCount,
+		},
+	}
+
+	_, err = r.challenges.UpdateOne(ctx, filter, update)
 	return err
 }
 
@@ -80,38 +107,6 @@ func (r *MongoRepository) AbandonChallenge(ctx context.Context, creatorId, chall
 	return err
 }
 
-func (r *MongoRepository) AddParticipantInJoinPhase(ctx context.Context, challengeId, userId string, metadata *model.ParticipantMetadata) error {
-	filter := bson.M{
-		"challengeId": challengeId,
-	}
-
-	update := bson.M{
-		"$set": bson.M{
-			"participants." + userId: metadata,
-		},
-	}
-
-	_, err := r.challenges.UpdateOne(ctx, filter, update)
-	return err
-}
-
-func (r *MongoRepository) RemoveParticipantInJoinPhase(ctx context.Context, challengeId, userId string) error {
-	filter := bson.M{
-		"challengeId": challengeId,
-	}
-
-	update := bson.M{
-		"$unset": bson.M{
-			"participants." + userId: "",
-			"submissions." + userId:  "",
-		},
-	}
-
-	_, err := r.challenges.UpdateOne(ctx, filter, update)
-	fmt.Println("removing participant err; ", err)
-
-	return err
-}
 
 func (r *MongoRepository) GetChallengeByID(ctx context.Context, challengeId string) (model.ChallengeDocument, error) {
 	filter := bson.M{
@@ -160,7 +155,7 @@ func (r *MongoRepository) GetOwnersActiveChallenges(ctx context.Context, userID 
 	filter := bson.M{
 		"creatorId": userID,
 		"status": bson.M{
-			"$in": []model.ChallengeStatus{model.ChallengeOpen, model.ChallengeStarted},
+			"$in": []string{model.ChallengeOpen, model.ChallengeStarted},
 		},
 	}
 	opts := options.Find().
@@ -181,61 +176,3 @@ func (r *MongoRepository) GetOwnersActiveChallenges(ctx context.Context, userID 
 	return results, nil
 }
 
-func (r *MongoRepository) CheckChallengeAccess(ctx context.Context, challengeId, userId, password string) (bool, error) {
-	if challengeId == "" || userId == "" {
-		return false, errors.New("challengeId and userId are required")
-	}
-	var challenge model.ChallengeDocument
-	err := r.challenges.FindOne(ctx, bson.M{"challengeId": challengeId}).Decode(&challenge)
-	if err != nil {
-		return false, err
-	}
-
-	if challenge.Status != model.ChallengeOpen {
-		return false, errors.New("challenges doesnt exist")
-	}
-
-	// check password only if challenge has one
-	if challenge.Password != "" && challenge.Password != password {
-		return false, nil // password required and doesn't match
-	}
-
-	return true, nil
-}
-
-// PersistChallengeFromRedis persists challenge data from Redis to MongoDB for historical storage
-func (r *MongoRepository) PersistChallengeFromRedis(ctx context.Context, challenge *model.ChallengeDocument) error {
-	if challenge == nil {
-		return errors.New("challenge cannot be nil")
-	}
-
-	// Check if challenge already exists in MongoDB
-	filter := bson.M{"challengeId": challenge.ChallengeID}
-	var existingChallenge model.ChallengeDocument
-	err := r.challenges.FindOne(ctx, filter).Decode(&existingChallenge)
-
-	if err == mongo.ErrNoDocuments {
-		// Challenge doesn't exist, insert it
-		_, err = r.challenges.InsertOne(ctx, challenge)
-		return err
-	} else if err != nil {
-		// Some other error occurred
-		return fmt.Errorf("failed to check existing challenge: %w", err)
-	}
-
-	// Challenge exists, update it
-	update := bson.M{
-		"$set": bson.M{
-			"status":              challenge.Status,
-			"participants":        challenge.Participants,
-			"submissions":         challenge.Submissions,
-			"leaderboard":         challenge.Leaderboard,
-			"startTime":           challenge.StartTime,
-			"processedProblemIds": challenge.ProcessedProblemIds,
-			"problemCount":        challenge.ProblemCount,
-		},
-	}
-
-	_, err = r.challenges.UpdateOne(ctx, filter, update)
-	return err
-}

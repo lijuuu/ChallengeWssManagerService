@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/global"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/wss/broadcasts"
 	wsstypes "github.com/lijuuu/ChallengeWssManagerService/internal/wss/types"
 )
@@ -15,7 +16,7 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-func WsHandler(dispatcher *Dispatcher, state *wsstypes.State) http.HandlerFunc {
+func WsHandler(dispatcher *Dispatcher, state *global.State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -35,7 +36,7 @@ func WsHandler(dispatcher *Dispatcher, state *wsstypes.State) http.HandlerFunc {
 				return
 			}
 
-			var wsMsg wsstypes.WsMessage
+			var wsMsg wsstypes.WsMessageRequest
 			if err := json.Unmarshal(msg, &wsMsg); err != nil {
 				log.Println("[WS] invalid message format:", err)
 				continue
@@ -64,7 +65,7 @@ func WsHandler(dispatcher *Dispatcher, state *wsstypes.State) http.HandlerFunc {
 	}
 }
 
-func cleanupConnection(state *wsstypes.State, userID, challengeID string) {
+func cleanupConnection(state *global.State, userID, challengeID string) {
 	if userID == "" || challengeID == "" {
 		log.Println("[WS] skipping cleanup: userID or challengeID missing")
 		return
