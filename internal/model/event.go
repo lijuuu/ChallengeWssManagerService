@@ -4,8 +4,6 @@ import "encoding/json"
 
 type EventType string
 
-
-
 type Event struct {
 	Type    EventType   `json:"type"`
 	Payload interface{} `json:"payload"`
@@ -43,7 +41,7 @@ type LeaderboardUpdatedPayload struct {
 }
 
 type ChallengeStatusChangedPayload struct {
-	ChallengeID string          `json:"challenge_id"`
+	ChallengeID string `json:"challenge_id"`
 	Status      string `json:"status"`
 }
 

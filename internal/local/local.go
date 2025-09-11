@@ -7,7 +7,6 @@ import (
 	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
 )
 
-
 type LocalStateManager struct {
 	challengeStates map[string]*ChallengeLocalState
 	mu              sync.RWMutex

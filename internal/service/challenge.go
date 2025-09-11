@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/lijuuu/ChallengeWssManagerService/internal/global"
@@ -25,14 +26,38 @@ func NewChallengeService(GlobalState *global.State) *ChallengeService {
 	}
 }
 
+func (s *ChallengeService) fetchChallengesConcurrently(ctx context.Context, challengeIDs []string, isPrivate bool) []model.ChallengeDocument {
+	var challenges []model.ChallengeDocument
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for _, challengeID := range challengeIDs {
+		wg.Add(1)
+		_ = s.GlobalState.AntsWorkerPool.Submit(func() {
+			defer wg.Done()
+			challenge, err := s.GlobalState.Redis.GetChallengeByID(ctx, challengeID)
+			if err == nil {
+				mu.Lock()
+				if challenge.IsPrivate == isPrivate { 
+					challenges = append(challenges, challenge)
+				}
+				mu.Unlock()
+			}
+		})
+	}
+
+	wg.Wait()
+	return challenges
+}
+
 func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb.ChallengeRecord) (*challengePb.ChallengeRecord, error) {
 
 	// Check for active challenges using Redis
-	challengeIDs, err := s.GlobalState.Redis.GetChallengesByStatus(ctx, string(model.ChallengeOpen))
+	canCreate, err := s.GlobalState.Redis.CanCreate(ctx, req.CreatorId)
 	if err != nil {
 		return nil, err
 	}
-	if len(challengeIDs) != 0 {
+	if !canCreate {
 		return nil, errors.New("active challenge already found, can't create new challenge")
 	}
 
@@ -192,26 +217,9 @@ func (s *ChallengeService) GetActiveOpenChallenges(ctx context.Context, req *cha
 		return nil, err
 	}
 
-	// Get challenge documents from Redis
-	var challenges []model.ChallengeDocument
-	for _, id := range challengeIDs {
-		challenge, err := s.GlobalState.Redis.GetChallengeByID(ctx, id)
-		if err != nil {
-			continue // Skip challenges that can't be retrieved
-		}
-		challenges = append(challenges, challenge)
-	}
-
-	// Apply pagination
-	start := int(req.Page) * int(req.PageSize)
-	end := start + int(req.PageSize)
-	if start > len(challenges) {
-		challenges = []model.ChallengeDocument{}
-	} else if end > len(challenges) {
-		challenges = challenges[start:]
-	} else {
-		challenges = challenges[start:end]
-	}
+	// Use ants workerpool for concurrent challenge fetching
+	isPrivate := false
+	challenges := s.fetchChallengesConcurrently(ctx, challengeIDs, isPrivate)
 
 	return &challengePb.ChallengeListResponse{
 		Challenges: ChallengesToProto(toPtrSlice(challenges), true),
@@ -220,39 +228,33 @@ func (s *ChallengeService) GetActiveOpenChallenges(ctx context.Context, req *cha
 }
 
 func (s *ChallengeService) GetOwnersActiveChallenges(ctx context.Context, req *challengePb.GetOwnersActiveChallengesRequest) (*challengePb.ChallengeListResponse, error) {
-	// For active challenges owned by a user, use Redis repository only
+	log.Printf("[GetOwnersActiveChallenges] Fetching active challenges for user %v", req)
+
 	challengeIDs, err := s.GlobalState.Redis.GetActiveChallenges(ctx)
 	if err != nil {
+		log.Printf("[GetOwnersActiveChallenges] Error fetching active challenges: %v", err)
 		return nil, err
 	}
+	log.Printf("[GetOwnersActiveChallenges] Retrieved %d active challenge IDs", len(challengeIDs))
 
-	// Filter challenges by owner and get challenge documents from Redis
 	var challenges []model.ChallengeDocument
 	for _, id := range challengeIDs {
 		challenge, err := s.GlobalState.Redis.GetChallengeByID(ctx, id)
 		if err != nil {
-			continue // Skip challenges that can't be retrieved
+			log.Printf("[GetOwnersActiveChallenges] Skipping challenge %s due to fetch error: %v", id, err)
+			continue
 		}
-		// Only include challenges owned by the requesting user
 		if challenge.CreatorID == req.UserId {
+			log.Printf("[GetOwnersActiveChallenges] Challenge %s belongs to user %s", id, req.UserId)
 			challenges = append(challenges, challenge)
 		}
 	}
+	log.Printf("[GetOwnersActiveChallenges] Found %d challenges owned by user %s", len(challenges), req.UserId)
 
-	// Apply pagination
-	start := int(req.Pagination.Page) * int(req.Pagination.PageSize)
-	end := start + int(req.Pagination.PageSize)
-	if start > len(challenges) {
-		challenges = []model.ChallengeDocument{}
-	} else if end > len(challenges) {
-		challenges = challenges[start:]
-	} else {
-		challenges = challenges[start:end]
-	}
+	log.Printf("[GetOwnersActiveChallenges] Returning %d challenges ", len(challenges))
 
 	return &challengePb.ChallengeListResponse{
 		Challenges: ChallengesToProto(toPtrSlice(challenges), false),
-		TotalCount: int64(len(challenges)),
 	}, nil
 }
 

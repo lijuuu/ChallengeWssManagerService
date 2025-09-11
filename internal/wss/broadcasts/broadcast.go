@@ -9,11 +9,6 @@ import (
 	wsstypes "github.com/lijuuu/ChallengeWssManagerService/internal/wss/types"
 )
 
-// SendJSON sends a JSON message over a single WebSocket connection.
-func SendJSON(conn *websocket.Conn, data interface{}) error {
-	return conn.WriteJSON(data)
-}
-
 // SendStandardMessage sends a standardized message to a single WebSocket connection.
 // This is the core function for sending any standard broadcast message.
 func SendStandardMessage(conn *websocket.Conn, msgType string, payload any, success bool, errorMsg *string) error {
@@ -26,6 +21,11 @@ func SendStandardMessage(conn *websocket.Conn, msgType string, payload any, succ
 	return SendJSON(conn, message)
 }
 
+// SendJSON sends a JSON message over a single WebSocket connection.
+func SendJSON(conn *websocket.Conn, data interface{}) error {
+	return conn.WriteJSON(data)
+}
+
 // BroadcastStandardMessage broadcasts a standardized message to all provided WebSocket clients.
 // This is the core function for broadcasting any standard broadcast message.
 func BroadcastStandardMessage(wsClients map[string]*websocket.Conn, msgType string, payload any, success bool, errorMsg *string) {
@@ -36,20 +36,18 @@ func BroadcastStandardMessage(wsClients map[string]*websocket.Conn, msgType stri
 		Error:   errorMsg,
 	}
 
-	// Sending to each connection concurrently to avoid blocking
+	// Send to each connection sequentially to avoid concurrent write issues
 	for _, conn := range wsClients {
 		if conn == nil {
 			continue // Skip nil connections
 		}
-		// Goroutine for non-blocking send, handle errors appropriately
-		go func(c *websocket.Conn) {
-			if err := SendJSON(c, message); err != nil {
-				// Log the error, or handle it as needed.
-				// For example, if a write fails, it might indicate a closed connection
-				// and you might want to remove it from the wsClients map.
-				// log.Printf("Error sending message to client: %v", err)
-			}
-		}(conn)
+		// Send synchronously to avoid concurrent writes to the same connection
+		if err := SendJSON(conn, message); err != nil {
+			// Log the error, or handle it as needed.
+			// For example, if a write fails, it might indicate a closed connection
+			// and you might want to remove it from the wsClients map.
+			// log.Printf("Error sending message to client: %v", err)
+		}
 	}
 }
 

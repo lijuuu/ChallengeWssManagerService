@@ -28,6 +28,8 @@ func (r *RedisRepository) CreateChallenge(ctx context.Context, challenge *model.
 		return fmt.Errorf("failed to marshal challenge: %w", err)
 	}
 
+	// fmt.Println("create challenge ", string(data))
+
 	return r.client.Set(ctx, key, data, 0).Err()
 }
 
@@ -210,6 +212,102 @@ func (r *RedisRepository) CanJoin(ctx context.Context, challengeID, userID strin
 
 	if challenge.Status == model.ChallengeEnded {
 		return false, fmt.Errorf("challenge has ended")
+	}
+
+	return true, nil
+}
+
+// CanCreate checks if a user can create a new challenge
+// Returns false if user is already a creator or participant in any ongoing active challenge
+func (r *RedisRepository) CanCreate(ctx context.Context, userID string) (bool, error) {
+	if userID == "" {
+		return false, fmt.Errorf("userID cannot be empty")
+	}
+
+	keys, err := r.client.Keys(ctx, "challenge:*").Result()
+	if err != nil {
+		return false, fmt.Errorf("failed to get challenge keys: %w", err)
+	}
+
+	if len(keys) == 0 {
+		return true, nil
+	}
+
+	// Use goroutines for concurrent checking with early exit
+	type result struct {
+		canCreate   bool
+		err         error
+		challengeID string
+	}
+
+	resultChan := make(chan result, len(keys))
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Launch goroutines to check each challenge concurrently
+	for _, key := range keys {
+		go func(key string) {
+			challengeID := key[10:] // Remove "challenge:" prefix
+
+			data, err := r.client.Get(ctx, key).Result()
+			if err != nil {
+				if err == redis.Nil {
+					resultChan <- result{canCreate: true, err: nil, challengeID: challengeID}
+				} else {
+					resultChan <- result{canCreate: true, err: nil, challengeID: challengeID} // Skip on error
+				}
+				return
+			}
+
+			var challenge model.ChallengeDocument
+			if err := json.Unmarshal([]byte(data), &challenge); err != nil {
+				resultChan <- result{canCreate: true, err: nil, challengeID: challengeID} // Skip malformed
+				return
+			}
+
+			// Skip abandoned or ended challenges
+			if challenge.Status == model.ChallengeAbandon || challenge.Status == model.ChallengeEnded {
+				resultChan <- result{canCreate: true, err: nil, challengeID: challengeID}
+				return
+			}
+
+			// Check if user is the creator of an ongoing challenge
+			if challenge.CreatorID == userID {
+				resultChan <- result{
+					canCreate:   false,
+					err:         fmt.Errorf("user is already the creator of an ongoing challenge: %s", challengeID),
+					challengeID: challengeID,
+				}
+				return
+			}
+
+			// Check if user is a participant in an ongoing challenge
+			if challenge.Participants != nil {
+				if _, exists := challenge.Participants[userID]; exists {
+					resultChan <- result{
+						canCreate:   false,
+						err:         fmt.Errorf("user is already a participant in an ongoing challenge: %s", challengeID),
+						challengeID: challengeID,
+					}
+					return
+				}
+			}
+
+			resultChan <- result{canCreate: true, err: nil, challengeID: challengeID}
+		}(key)
+	}
+
+	// Collect results with early exit on first conflict
+	for i := 0; i < len(keys); i++ {
+		select {
+		case res := <-resultChan:
+			if !res.canCreate {
+				cancel() // Cancel remaining goroutines
+				return false, res.err
+			}
+		case <-ctx.Done():
+			return false, ctx.Err()
+		}
 	}
 
 	return true, nil

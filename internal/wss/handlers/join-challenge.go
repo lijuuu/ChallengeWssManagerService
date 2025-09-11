@@ -129,17 +129,17 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 	wsClients := ctx.State.LocalState.GetAllWSClients(payload.ChallengeId)
 	broadcasts.BroadcastEntityJoinedWithClients(wsClients, userData.UserID, payload.ChallengeId, userData.UserID == challengeDoc.CreatorID)
 
-	newToken, _ := ctx.State.JwtManager.GenerateToken(payload.UserId, payload.ChallengeId, time.Duration(challengeDoc.TimeLimit)+constants.BufferTime)
+	challengeToken, _ := ctx.State.JwtManager.GenerateToken(payload.UserId, payload.ChallengeId, time.Duration(challengeDoc.TimeLimit)+constants.BufferTime)
 
 	return broadcasts.SendJSON(ctx.Conn, map[string]interface{}{
 		"type":    wsstypes.JOIN_CHALLENGE,
 		"status":  "success",
 		"message": "Joined challenge successfully",
 		"payload": map[string]interface{}{
-			"userId":      userData.UserID,
-			"challengeId": payload.ChallengeId,
-			"challenge":   challengeDoc,
-			"token":       newToken,
+			"userId":         userData.UserID,
+			"challengeId":    payload.ChallengeId,
+			"challenge":      challengeDoc,
+			"challengeToken": challengeToken,
 		},
 	})
 }

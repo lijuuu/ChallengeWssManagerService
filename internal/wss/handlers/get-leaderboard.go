@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/constants"
-	"github.com/lijuuu/ChallengeWssManagerService/internal/leaderboard"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/wss/broadcasts"
 	wsstypes "github.com/lijuuu/ChallengeWssManagerService/internal/wss/types"
 )
@@ -16,23 +15,10 @@ type GetLeaderboardPayload struct {
 	UserId      string `json:"userId"`
 	Type        string `json:"type"`
 	ChallengeId string `json:"challengeId"`
-	Limit       int    `json:"limit,omitempty"` // Optional limit, defaults to 50
+	Limit       int    `json:"limit,omitempty"` // Optional limit, defaults to 100
 }
 
-// NewGetLeaderboardHandler creates a handler with the leaderboard service dependency
-func NewGetLeaderboardHandler(leaderboardService *leaderboard.LeaderboardManager) func(*wsstypes.WsContext) error {
-	return func(ctx *wsstypes.WsContext) error {
-		return getLeaderboardHandler(ctx, leaderboardService)
-	}
-}
-
-// GetLeaderboardHandler is the default handler (for backward compatibility)
 func GetLeaderboardHandler(ctx *wsstypes.WsContext) error {
-	// This will fail if no leaderboard service is available
-	return broadcasts.SendErrorWithType(ctx.Conn, constants.CURRENT_LEADERBOARD, "Leaderboard service not configured", nil)
-}
-
-func getLeaderboardHandler(ctx *wsstypes.WsContext, leaderboardService *leaderboard.LeaderboardManager) error {
 	requestID := uuid.New().String()
 
 	var payload GetLeaderboardPayload
@@ -76,7 +62,7 @@ func getLeaderboardHandler(ctx *wsstypes.WsContext, leaderboardService *leaderbo
 	}
 
 	// Get current leaderboard using the injected service
-	leaderboard, err := leaderboardService.GetLeaderboard(payload.ChallengeId, limit, &challengeDoc)
+	leaderboard, err := ctx.State.LeaderboardManager.GetLeaderboard(payload.ChallengeId, limit, &challengeDoc)
 	if err != nil {
 		log.Printf("[%s] [GetLeaderboard] Failed to get leaderboard: %v", requestID, err)
 		return broadcasts.SendErrorWithType(ctx.Conn, constants.CURRENT_LEADERBOARD, "Failed to retrieve leaderboard", nil)

@@ -118,7 +118,7 @@ func (m *AuthMiddleware) JWTMiddleware() func(*wsstypes.WsContext) error {
 		// Store claims in context for handler use
 		ctx.Claims = claims
 		ctx.UserID = claims.UserID
- 
+
 		return nil
 	}
 }

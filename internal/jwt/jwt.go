@@ -7,7 +7,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// CustomClaims represents the JWT claims with challengeId and userId
+//CustomClaims represents the JWT claims with challengeId and userId
 type CustomClaims struct {
 	UserID      string `json:"userId"`
 	ChallengeID string `json:"challengeId"`
@@ -15,19 +15,19 @@ type CustomClaims struct {
 	jwt.RegisteredClaims
 }
 
-// JWTManager handles JWT operations
+//JWTManager handles JWT operations
 type JWTManager struct {
 	secretKey []byte
 }
 
-// NewJWTManager creates a new JWT manager with the provided secret key
+//NewJWTManager creates a new JWT manager with the provided secret key
 func NewJWTManager(secretKey string) *JWTManager {
 	return &JWTManager{
 		secretKey: []byte(secretKey),
 	}
 }
 
-// GenerateToken generates a JWT token with userId and challengeId claims
+//generateToken generates a JWT token with userId and challengeId claims
 func (j *JWTManager) GenerateToken(userID, challengeID string, expiration time.Duration) (string, error) {
 	if userID == "" {
 		return "", errors.New("userID cannot be empty")
@@ -50,7 +50,7 @@ func (j *JWTManager) GenerateToken(userID, challengeID string, expiration time.D
 	return token.SignedString(j.secretKey)
 }
 
-// ValidateToken validates a JWT token and returns the claims
+//validateToken validates a JWT token and returns the claims
 func (j *JWTManager) ValidateToken(tokenString string) (*CustomClaims, error) {
 	if tokenString == "" {
 		return nil, errors.New("token cannot be empty")
@@ -75,7 +75,7 @@ func (j *JWTManager) ValidateToken(tokenString string) (*CustomClaims, error) {
 	return nil, errors.New("invalid token")
 }
 
-// ExtractClaims extracts claims from a token without full validation (for middleware use)
+//extractClaims extracts claims from a token without full validation (for middleware use)
 func (j *JWTManager) ExtractClaims(tokenString string) (*CustomClaims, error) {
 	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, &CustomClaims{})
 	if err != nil {

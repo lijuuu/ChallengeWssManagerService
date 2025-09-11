@@ -23,6 +23,7 @@ import (
 	wsshandler "github.com/lijuuu/ChallengeWssManagerService/internal/wss/handlers"
 	wsstypes "github.com/lijuuu/ChallengeWssManagerService/internal/wss/types"
 	challengepb "github.com/lijuuu/GlobalProtoXcode/ChallengeService"
+	"github.com/panjf2000/ants/v2"
 	"google.golang.org/grpc"
 )
 
@@ -58,12 +59,18 @@ func main() {
 	// Initialize leaderboard service
 	leaderboardManager := leaderboard.NewLeaderboardManager(cfg.RedisURL, cfg.RedisPassword)
 
+	//workerpool
+	pool, _ := ants.NewPool(100)
+	defer pool.Release()
+
 	// Initialize WebSocket state with both repositories and local state manager
 	websocketState := &global.State{
-		Redis:      redisRepo,
-		Mongo:      mongoRepo,
-		LocalState: localStateManager,
-		JwtManager: jwtManager,
+		Redis:              redisRepo,
+		Mongo:              mongoRepo,
+		LocalState:         localStateManager,
+		JwtManager:         jwtManager,
+		LeaderboardManager: leaderboardManager,
+		AntsWorkerPool:     pool,
 	}
 
 	// Initialize service with both repositories and WebSocket state
@@ -78,7 +85,7 @@ func main() {
 	jwtMiddleware := func(ctx *wsstypes.WsContext) error {
 		// Extract token from payload
 		var token string
-		if tokenVal, exists := ctx.Payload["token"]; exists {
+		if tokenVal, exists := ctx.Payload["challengeToken"]; exists {
 			if tokenStr, ok := tokenVal.(string); ok {
 				token = tokenStr
 			}
@@ -122,7 +129,7 @@ func main() {
 	dispatcher.RegisterWithMiddleware(wsstypes.RETRIEVE_CHALLENGE, wsshandler.RetreiveChallenge, jwtMiddleware)
 
 	//get leaderboard - requires authentication
-	dispatcher.RegisterWithMiddleware(wsstypes.CURRENT_LEADERBOARD, wsshandler.NewGetLeaderboardHandler(leaderboardManager), jwtMiddleware)
+	dispatcher.RegisterWithMiddleware(wsstypes.CURRENT_LEADERBOARD, wsshandler.GetLeaderboardHandler, jwtMiddleware)
 
 	http.HandleFunc("/ws", wss.WsHandler(dispatcher, websocketState))
 

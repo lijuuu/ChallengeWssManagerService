@@ -38,7 +38,7 @@ func LoadConfig() Config {
 		RedisPassword:           getEnv("REDISPASSWORD", ""),
 		RedisDB:                 getEnvInt("REDISDB", 0),
 		APIGatewayTokenCheckURL: getEnv("APIGATEWAYTOKENCHECKURL", "http://localhost:7000/api/v1/users/check-token"),
-		JWTSecret:getEnv("JWTSECRET","secrettt"),
+		JWTSecret:               getEnv("JWTSECRET", "secrettt"),
 	}
 
 	return config

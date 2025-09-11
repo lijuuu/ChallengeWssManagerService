@@ -107,7 +107,6 @@ func (r *MongoRepository) AbandonChallenge(ctx context.Context, creatorId, chall
 	return err
 }
 
-
 func (r *MongoRepository) GetChallengeByID(ctx context.Context, challengeId string) (model.ChallengeDocument, error) {
 	filter := bson.M{
 		"challengeId": challengeId,
@@ -175,4 +174,3 @@ func (r *MongoRepository) GetOwnersActiveChallenges(ctx context.Context, userID 
 	}
 	return results, nil
 }
-
