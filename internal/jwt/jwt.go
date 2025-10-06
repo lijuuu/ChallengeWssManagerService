@@ -7,7 +7,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-//CustomClaims represents the JWT claims with challengeId and userId
+// customclaims defines the claims we store in jwts for this service.
+// it includes who the user is and which challenge they belong to.
 type CustomClaims struct {
 	UserID      string `json:"userId"`
 	ChallengeID string `json:"challengeId"`
@@ -15,19 +16,20 @@ type CustomClaims struct {
 	jwt.RegisteredClaims
 }
 
-//JWTManager handles JWT operations
+// jwtmanager signs and verifies jwt tokens using an hmac secret.
 type JWTManager struct {
 	secretKey []byte
 }
 
-//NewJWTManager creates a new JWT manager with the provided secret key
+// newjwtmanager returns a manager that uses the provided secret key.
 func NewJWTManager(secretKey string) *JWTManager {
 	return &JWTManager{
 		secretKey: []byte(secretKey),
 	}
 }
 
-//generateToken generates a JWT token with userId and challengeId claims
+// generatetoken issues a jwt for a user in a given challenge.
+// the token expires after the provided duration.
 func (j *JWTManager) GenerateToken(userID, challengeID string, expiration time.Duration) (string, error) {
 	if userID == "" {
 		return "", errors.New("userID cannot be empty")
@@ -50,14 +52,14 @@ func (j *JWTManager) GenerateToken(userID, challengeID string, expiration time.D
 	return token.SignedString(j.secretKey)
 }
 
-//validateToken validates a JWT token and returns the claims
+// validatetoken parses and verifies a jwt and returns its claims if valid.
 func (j *JWTManager) ValidateToken(tokenString string) (*CustomClaims, error) {
 	if tokenString == "" {
 		return nil, errors.New("token cannot be empty")
 	}
 
 	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
-		// Validate the signing method
+		//only accept hmac signatures.
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("invalid signing method")
 		}
@@ -75,7 +77,8 @@ func (j *JWTManager) ValidateToken(tokenString string) (*CustomClaims, error) {
 	return nil, errors.New("invalid token")
 }
 
-//extractClaims extracts claims from a token without full validation (for middleware use)
+// extractclaims reads claims without verifying the signature.
+// useful for lightweight checks in middleware. do not use for auth decisions.
 func (j *JWTManager) ExtractClaims(tokenString string) (*CustomClaims, error) {
 	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, &CustomClaims{})
 	if err != nil {

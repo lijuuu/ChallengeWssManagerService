@@ -1,0 +1,71 @@
+// syntax = "proto3";
+
+// package ChallengeService;
+
+// service ChallengeService {
+//   rpc GetFinishedChallengeInfo(FinishedChallengeInfoRequest) returns (FinishedChallengeInfoResponse);
+// }
+
+// message FinishedChallengeInfoRequest {
+//   string challenge_id = 1;
+//   string user_id = 2;
+// }
+
+// message ParticipantSummary {
+//   string user_id = 1;
+//   int32 total_score = 2;
+//   int32 problems_attempted = 3;
+//   int64 join_time_unix = 4;
+//   int64 last_connected_unix = 5;
+// }
+
+// message SubmissionSummary {
+//   string submission_id = 1;
+//   int64 time_taken_millis = 2;
+//   int32 points = 3;
+// }
+
+// message LeaderboardEntryPb {
+//   string user_id = 1;
+//   int32 problems_completed = 2;
+//   int32 total_score = 3;
+//   int32 rank = 4;
+// }
+
+// message NotificationPb {
+//   string type = 1;
+//   string message = 2;
+//   int64 time_unix = 3;
+// }
+
+// message ChatMessagePb {
+//   string user_id = 1;
+//   string profile_pic = 2;
+//   string message = 3;
+//   int64 time_unix = 4;
+// }
+
+// message FinishedChallengeFull {
+//   string challenge_id = 1;
+//   string title = 2;
+//   string creator_id = 3;
+//   bool is_private = 4;
+//   string status = 5;
+//   int64 created_at_unix = 6;
+//   int64 start_time_unix = 7;
+//   int64 time_limit_millis = 8;
+
+//   map<string, ParticipantSummary> participants = 9;
+//   map<string, map<string, SubmissionSummary>> submissions = 10;
+//   repeated LeaderboardEntryPb leaderboard = 11;
+//   repeated NotificationPb notifications = 12;
+//   repeated ChatMessagePb chat = 13;
+// }
+
+// message FinishedChallengeInfoResponse {
+//   bool success = 1;
+//   string message = 2;
+//   FinishedChallengeFull challenge = 3;
+// }
+
+

@@ -198,7 +198,7 @@ func (lm *LeaderboardManager) GetLeaderboard(challengeID string, limit int, chal
 }
 
 // GetParticipantRank gets a participant's rank and data using RedisBoard
-func (lm *LeaderboardManager) GetParticipantRank(challengeID, userID string) (*ParticipantLeaderboardData, error) {
+func (lm *LeaderboardManager) GetParticipantRank(challengeID, userID string) (*model.ParticipantRank, error) {
 	board, err := lm.getBoard(challengeID)
 	if err != nil {
 		return nil, err
@@ -209,22 +209,18 @@ func (lm *LeaderboardManager) GetParticipantRank(challengeID, userID string) (*P
 	if err != nil {
 		return nil, fmt.Errorf("failed to get rank for user %s in challenge %s: %w", userID, challengeID, err)
 	}
-
-	// Convert to our format
-	participantData := &ParticipantLeaderboardData{
+	// convert to our model struct
+	pr := &model.ParticipantRank{
 		UserID:     userID,
 		TotalScore: int(data.Score),
-		GlobalRank: data.GlobalRank + 1, // Convert to 1-based ranking
-		Rank:       data.GlobalRank + 1, // Alias for compatibility
+		GlobalRank: data.GlobalRank,
+		Rank:       data.GlobalRank,
 	}
-
-	// Handle case where user is not found (rank -1)
-	if data.GlobalRank == -1 {
-		participantData.GlobalRank = -1
-		participantData.Rank = -1
+	if data.GlobalRank != -1 {
+		pr.GlobalRank = data.GlobalRank + 1
+		pr.Rank = data.GlobalRank + 1
 	}
-
-	return participantData, nil
+	return pr, nil
 }
 
 // CalculateProblemsCompleted calculates the number of unique problems solved by a participant

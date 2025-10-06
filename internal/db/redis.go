@@ -66,13 +66,13 @@ func LoadRedisData(rdb *redis.Client) error {
 	ctx := context.Background()
 
 	// Check if we have any data (RDB file would have been loaded automatically by Redis)
-	info, err := rdb.Info(ctx, "persistence").Result()
+	_, err := rdb.Info(ctx, "persistence").Result()
 	if err != nil {
 		log.Printf("Warning: Could not get Redis persistence info: %v", err)
 		return nil
 	}
 
-	log.Printf("Redis persistence info: %s", info)
+	// log.Printf("Redis persistence info: %s", info)
 
 	// Check if we have any keys loaded
 	keyCount, err := rdb.DBSize(ctx).Result()

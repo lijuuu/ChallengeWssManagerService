@@ -7,15 +7,19 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/constants"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/global"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/wss/broadcasts"
 	wsstypes "github.com/lijuuu/ChallengeWssManagerService/internal/wss/types"
 )
 
+// accept all origins for websocket upgrades.
+// consider restricting this in production.
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+// wshandler upgrades http connections to websocket and dispatches messages.
 func WsHandler(dispatcher *Dispatcher, state *global.State) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -42,9 +46,11 @@ func WsHandler(dispatcher *Dispatcher, state *global.State) http.HandlerFunc {
 				continue
 			}
 
-			log.Printf("[WS] received: type=%s payload=%v", wsMsg.Type, wsMsg.Payload)
+			if wsMsg.Type != constants.PING_SERVER {
+				log.Printf("[WS] received: type=%s payload=%v", wsMsg.Type, wsMsg.Payload)
+			}
 
-			// track for cleanup
+			//track ids for cleanup if the connection drops later.
 			if uid, ok := wsMsg.Payload["userId"].(string); ok {
 				userID = uid
 			}
@@ -65,6 +71,7 @@ func WsHandler(dispatcher *Dispatcher, state *global.State) http.HandlerFunc {
 	}
 }
 
+// cleanupconnection removes ephemeral state and notifies peers when a client disconnects.
 func cleanupConnection(state *global.State, userID, challengeID string) {
 	if userID == "" || challengeID == "" {
 		log.Println("[WS] skipping cleanup: userID or challengeID missing")
@@ -73,26 +80,26 @@ func cleanupConnection(state *global.State, userID, challengeID string) {
 
 	log.Printf("[WS] cleaning up session: user=%s challenge=%s", userID, challengeID)
 
-	// Remove participant from Redis
+	//remove participant from redis.
 	if err := state.Redis.RemoveParticipantInJoinPhase(context.Background(), challengeID, userID); err != nil {
 		log.Printf("[Redis] failed to remove from Redis: %v", err)
 	} else {
 		log.Printf("[Redis] user %s removed from Redis for challenge %s", userID, challengeID)
 	}
 
-	// Get challenge info for broadcast before removing connection
+	//fetch challenge info for accurate owner/participant broadcast.
 	challengeDoc, err := state.Redis.GetChallengeByID(context.Background(), challengeID)
 	if err != nil {
 		log.Printf("[WS] failed to get challenge for cleanup broadcast: %v", err)
 	}
 
-	// Remove WebSocket connection from local state
+	//remove connection and session from local state.
 	state.LocalState.RemoveWSClient(challengeID, userID)
 	state.LocalState.RemoveSession(challengeID, userID)
 
 	log.Printf("[WS] user %s removed from local state for challenge %s", userID, challengeID)
 
-	// Broadcast user left to remaining clients
+	//notify remaining clients about the departure.
 	if err == nil {
 		wsClients := state.LocalState.GetAllWSClients(challengeID)
 		broadcasts.BroadcastEntityLeftWithClients(wsClients, userID, challengeID, userID == challengeDoc.CreatorID)

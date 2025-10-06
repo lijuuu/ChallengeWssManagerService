@@ -22,27 +22,27 @@ func NewMongoRepository(client *mongo.Client, dbName string) *MongoRepository {
 	}
 }
 
-// PersistChallengeFromRedis persists challenge data from Redis to MongoDB for historical storage
+// persistchallengefromredis saves a snapshot of a challenge into mongodb for history.
 func (r *MongoRepository) PersistChallengeFromRedis(ctx context.Context, challenge *model.ChallengeDocument) error {
 	if challenge == nil {
 		return errors.New("challenge cannot be nil")
 	}
 
-	// Check if challenge already exists in MongoDB
+	//upsert by challengeid if it already exists.
 	filter := bson.M{"challengeId": challenge.ChallengeID}
 	var existingChallenge model.ChallengeDocument
 	err := r.challenges.FindOne(ctx, filter).Decode(&existingChallenge)
 
 	if err == mongo.ErrNoDocuments {
-		// Challenge doesn't exist, insert it
+		//not found: insert a new document.
 		_, err = r.challenges.InsertOne(ctx, challenge)
 		return err
 	} else if err != nil {
-		// Some other error occurred
+		//unexpected read error.
 		return fmt.Errorf("failed to check existing challenge: %w", err)
 	}
 
-	// Challenge exists, update it
+	//found: update the existing document with the latest fields.
 	update := bson.M{
 		"$set": bson.M{
 			"status":              challenge.Status,
@@ -59,7 +59,7 @@ func (r *MongoRepository) PersistChallengeFromRedis(ctx context.Context, challen
 	return err
 }
 
-// GetChallengeHistory returns challenge history; toggle it using isPrivate
+// getchallengehistory returns the user's challenge history, filtered by privacy.
 func (r *MongoRepository) GetChallengeHistory(ctx context.Context, userID string, page, pageSize int, isPrivate bool) ([]model.ChallengeDocument, error) {
 	if page < 1 || pageSize < 1 || userID == "" {
 		return nil, errors.New("invalid pagination or userID")
@@ -117,7 +117,21 @@ func (r *MongoRepository) GetChallengeByID(ctx context.Context, challengeId stri
 	return result, err
 }
 
-// GetActiveChallenges returns challenges not marked as finished
+// GetAllChallenges returns all persisted challenges
+func (r *MongoRepository) GetAllChallenges(ctx context.Context) ([]model.ChallengeDocument, error) {
+	cursor, err := r.challenges.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	var results []model.ChallengeDocument
+	if err := cursor.All(ctx, &results); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+// getactiveopenchallenges returns public challenges that are open.
 func (r *MongoRepository) GetActiveOpenChallenges(ctx context.Context, page, pageSize int) ([]model.ChallengeDocument, error) {
 	if page < 1 || pageSize < 1 {
 		return nil, errors.New("invalid pagination")
@@ -145,7 +159,7 @@ func (r *MongoRepository) GetActiveOpenChallenges(ctx context.Context, page, pag
 	return results, nil
 }
 
-// GetOwnersActiveChallenges returns challenges created by a specific user that are either open or started
+// getownersactivechallenges lists active challenges created by a user.
 func (r *MongoRepository) GetOwnersActiveChallenges(ctx context.Context, userID string, page, pageSize int) ([]model.ChallengeDocument, error) {
 	if page < 1 || pageSize < 1 || userID == "" {
 		return nil, errors.New("invalid pagination or userID")

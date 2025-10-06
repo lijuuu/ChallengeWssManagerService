@@ -2,7 +2,6 @@ package wss
 
 import (
 	"errors"
-	"log"
 
 	wsstypes "github.com/lijuuu/ChallengeWssManagerService/internal/wss/types"
 )
@@ -24,14 +23,12 @@ type Dispatcher struct {
 }
 
 func NewDispatcher() *Dispatcher {
-	log.Println("dispatcher initialized")
 	return &Dispatcher{
 		handlers: make(map[string]*HandlerRegistration),
 	}
 }
 
 func (d *Dispatcher) Register(event string, handler WsHandlerType) {
-	log.Printf("registering handler for event: %s", event)
 	d.handlers[event] = &HandlerRegistration{
 		Handler:     handler,
 		Middlewares: nil,
@@ -39,7 +36,6 @@ func (d *Dispatcher) Register(event string, handler WsHandlerType) {
 }
 
 func (d *Dispatcher) RegisterWithMiddleware(event string, handler WsHandlerType, middlewares ...WsMiddleware) {
-	log.Printf("registering handler with middleware for event: %s", event)
 	d.handlers[event] = &HandlerRegistration{
 		Handler:     handler,
 		Middlewares: middlewares,
@@ -47,41 +43,33 @@ func (d *Dispatcher) RegisterWithMiddleware(event string, handler WsHandlerType,
 }
 
 func (d *Dispatcher) Dispatch(event string, ctx *wsstypes.WsContext) error {
-	log.Printf("dispatching event: %s", event)
-
 	registration, ok := d.handlers[event]
 	if !ok {
-		log.Printf("no handler found for event: %s", event)
 		return errors.New("unknown event type: " + event)
 	}
 
 	// Execute middleware chain before handler
 	if len(registration.Middlewares) > 0 {
-		err := d.executeMiddlewareChain(registration.Middlewares, ctx)
-		if err != nil {
-			log.Printf("middleware error for event %s: %v", event, err)
+		if err := d.executeMiddlewareChain(registration.Middlewares, ctx); err != nil {
 			return err
 		}
 	}
 
 	// Execute the main handler
-	err := registration.Handler(ctx)
-	if err != nil {
-		log.Printf("handler error for event %s: %v", event, err)
-	}
-	return err
+	return registration.Handler(ctx)
 }
 
 // executeMiddlewareChain executes middleware functions in order, stopping on first error
 func (d *Dispatcher) executeMiddlewareChain(middlewares []WsMiddleware, ctx *wsstypes.WsContext) error {
-	for i, middleware := range middlewares {
-		log.Printf("executing middleware %d of %d", i+1, len(middlewares))
-		err := middleware(ctx)
-		if err != nil {
-			log.Printf("middleware %d failed: %v", i+1, err)
+	for _, middleware := range middlewares {
+		if err := middleware(ctx); err != nil {
 			return err
 		}
 	}
-	log.Printf("middleware chain completed successfully")
 	return nil
 }
+
+// Handler registration for PUSHNEWCHAT, PUSHNEWNOTIFICATION should be done in main setup:
+// d.Register(constants.PUSH_NEW_CHAT, wsshandler.PushNewChatHandler)
+// d.Register(constants.PUSH_NEW_CHAT, wsshandler.PushNewChatSyncHandler)
+// d.Register(constants.PUSH_NEW_NOTIFICATION, wsshandler.PushNewNotificationHandler)

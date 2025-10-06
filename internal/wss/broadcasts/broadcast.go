@@ -9,8 +9,8 @@ import (
 	wsstypes "github.com/lijuuu/ChallengeWssManagerService/internal/wss/types"
 )
 
-// SendStandardMessage sends a standardized message to a single WebSocket connection.
-// This is the core function for sending any standard broadcast message.
+// sendstandardmessage writes a structured message to one websocket client.
+// most other helpers build on top of this.
 func SendStandardMessage(conn *websocket.Conn, msgType string, payload any, success bool, errorMsg *string) error {
 	message := wsstypes.StandardBroadcastMessage{
 		Type:    msgType,
@@ -21,13 +21,12 @@ func SendStandardMessage(conn *websocket.Conn, msgType string, payload any, succ
 	return SendJSON(conn, message)
 }
 
-// SendJSON sends a JSON message over a single WebSocket connection.
+// sendjson writes an arbitrary value as json to one websocket client.
 func SendJSON(conn *websocket.Conn, data interface{}) error {
 	return conn.WriteJSON(data)
 }
 
-// BroadcastStandardMessage broadcasts a standardized message to all provided WebSocket clients.
-// This is the core function for broadcasting any standard broadcast message.
+// broadcaststandardmessage sends the same structured message to every client in the map.
 func BroadcastStandardMessage(wsClients map[string]*websocket.Conn, msgType string, payload any, success bool, errorMsg *string) {
 	message := wsstypes.StandardBroadcastMessage{
 		Type:    msgType,
@@ -36,51 +35,47 @@ func BroadcastStandardMessage(wsClients map[string]*websocket.Conn, msgType stri
 		Error:   errorMsg,
 	}
 
-	// Send to each connection sequentially to avoid concurrent write issues
+	//send sequentially to avoid concurrent writes on the same connection.
 	for _, conn := range wsClients {
 		if conn == nil {
-			continue // Skip nil connections
+			continue //w ignore empty slots
 		}
-		// Send synchronously to avoid concurrent writes to the same connection
+		//w synchronous write per connection.
 		if err := SendJSON(conn, message); err != nil {
-			// Log the error, or handle it as needed.
-			// For example, if a write fails, it might indicate a closed connection
-			// and you might want to remove it from the wsClients map.
-			// log.Printf("Error sending message to client: %v", err)
+			//consider removing dead connections upstream.
 		}
 	}
 }
 
-// SendStandardError sends a standardized error message to a single WebSocket connection.
+// sendstandarderror sends a structured error to one client.
 func SendStandardError(conn *websocket.Conn, msgType string, errorMsg string) error {
 	errorPtr := &errorMsg
 	return SendStandardMessage(conn, msgType, nil, false, errorPtr)
 }
 
-// BroadcastStandardError broadcasts a standardized error message to all WebSocket clients.
+// broadcaststandarderror broadcasts the same error to all clients.
 func BroadcastStandardError(wsClients map[string]*websocket.Conn, msgType string, errorMsg string) {
 	errorPtr := &errorMsg
 	BroadcastStandardMessage(wsClients, msgType, nil, false, errorPtr)
 }
 
-// SendStandardSuccess sends a standardized success message to a single WebSocket connection.
+// sendstandardsuccess sends a success response with payload to one client.
 func SendStandardSuccess(conn *websocket.Conn, msgType string, payload any) error {
 	return SendStandardMessage(conn, msgType, payload, true, nil)
 }
 
-// BroadcastStandardSuccess broadcasts a standardized success message to all WebSocket clients.
+// broadcaststandardsuccess sends a success response with payload to all clients.
 func BroadcastStandardSuccess(wsClients map[string]*websocket.Conn, msgType string, payload any) {
 	BroadcastStandardMessage(wsClients, msgType, payload, true, nil)
 }
 
-// SendErrorWithType sends a standardized error message with additional payload details to a single WebSocket connection.
-// The `extra` map is passed as the `Payload`.
+// senderrorwithtype sends an error under a specific event type with extra context.
 func SendErrorWithType(conn *websocket.Conn, eventType string, msg string, extra map[string]any) error {
 	errorMsg := msg
 	return SendStandardMessage(conn, eventType, extra, false, &errorMsg)
 }
 
-// BroadcastEntityJoinedWithClients broadcasts a user/owner joined event to WebSocket clients.
+// broadcastentityjoinedwithclients notifies clients that someone joined the challenge.
 func BroadcastEntityJoinedWithClients(wsClients map[string]*websocket.Conn, userID, challengeID string, isOwner bool) {
 	eventType := constants.USER_JOINED
 	if isOwner {
@@ -96,7 +91,7 @@ func BroadcastEntityJoinedWithClients(wsClients map[string]*websocket.Conn, user
 	BroadcastStandardMessage(wsClients, eventType, payload, true, nil)
 }
 
-// BroadcastEntityLeftWithClients broadcasts a user/owner left event to WebSocket clients.
+// broadcastentityleftwithclients notifies clients that someone left the challenge.
 func BroadcastEntityLeftWithClients(wsClients map[string]*websocket.Conn, userID, challengeID string, isOwner bool) {
 	eventType := constants.USER_LEFT
 	if isOwner {
@@ -112,7 +107,7 @@ func BroadcastEntityLeftWithClients(wsClients map[string]*websocket.Conn, userID
 	BroadcastStandardMessage(wsClients, eventType, payload, true, nil)
 }
 
-// BroadcastChallengeAbandonWithClients broadcasts a challenge abandon event to WebSocket clients.
+// broadcastchallengeabandonwithclients tells clients that the creator abandoned the challenge.
 func BroadcastChallengeAbandonWithClients(wsClients map[string]*websocket.Conn, challengeID, creatorID string) {
 	payload := map[string]any{
 		"challengeId": challengeID,
@@ -123,7 +118,7 @@ func BroadcastChallengeAbandonWithClients(wsClients map[string]*websocket.Conn, 
 	BroadcastStandardMessage(wsClients, constants.CREATOR_ABANDON, payload, true, nil)
 }
 
-// BroadcastNewSubmission broadcasts NEW_SUBMISSION event to WebSocket clients.
+// broadcastnewsubmission informs clients about a new successful submission.
 func BroadcastNewSubmission(wsClients map[string]*websocket.Conn, challengeID, userID, problemID string, score, newRank int) {
 	payload := map[string]any{
 		"challengeId": challengeID,
@@ -133,11 +128,10 @@ func BroadcastNewSubmission(wsClients map[string]*websocket.Conn, challengeID, u
 		"newRank":     newRank,
 		"time":        time.Now(),
 	}
-
-	BroadcastStandardMessage(wsClients, constants.NEW_SUBMISSION, payload, true, nil)
+	BroadcastStandardMessage(wsClients, constants.PUSH_SUBMISSION, payload, true, nil)
 }
 
-// BroadcastLeaderboardUpdate broadcasts LEADERBOARD_UPDATE event to WebSocket clients.
+// broadcastleaderboardupdate sends the latest leaderboard to clients.
 func BroadcastLeaderboardUpdate(wsClients map[string]*websocket.Conn, challengeID string, leaderboard []*model.LeaderboardEntry, updatedUser string) {
 	payload := map[string]any{
 		"challengeId": challengeID,
@@ -147,4 +141,23 @@ func BroadcastLeaderboardUpdate(wsClients map[string]*websocket.Conn, challengeI
 	}
 
 	BroadcastStandardMessage(wsClients, constants.LEADERBOARD_UPDATE, payload, true, nil)
+}
+
+// broadcastgamefinished notifies clients that the game has ended.
+func BroadcastGameFinished(wsClients map[string]*websocket.Conn, challengeID string) {
+	payload := map[string]any{
+		"challengeId": challengeID,
+		"time":        time.Now(),
+	}
+	BroadcastStandardMessage(wsClients, constants.GAME_FINISHED, payload, true, nil)
+}
+
+// broadcastchatmessage sends a chat message to all clients in a challenge.
+func BroadcastChatMessage(wsClients map[string]*websocket.Conn, challengeID string, message map[string]any) {
+	payload := map[string]any{
+		"challengeId": challengeID,
+		"message":     message,
+		"time":        time.Now(),
+	}
+	BroadcastStandardMessage(wsClients, constants.CHAT_MESSAGE, payload, true, nil)
 }

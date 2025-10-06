@@ -60,6 +60,8 @@ type ChallengeDocument struct {
 	Config              *ChallengeConfig                 `bson:"config" json:"config"`
 	ProcessedProblemIds []string                         `bson:"processedProblemIds" json:"processedProblemIds"`
 	ProblemCount        int64                            `bson:"problemCount" json:"problemCount"`
+	Notifications       []Notification                   `bson:"notifications" json:"notifications"`
+	Chat                []ChatMessage                    `bson:"chat" json:"chat"`
 }
 
 type Submission struct {
@@ -91,4 +93,27 @@ type LeaderboardEntry struct {
 	ProblemsCompleted int    `json:"problemsCompleted"`
 	TotalScore        int    `json:"totalScore"`
 	Rank              int    `json:"rank"`
+}
+
+// Notification is a human readable event item for frontend display
+type Notification struct {
+	Type    string `bson:"type" json:"type"`
+	Message string `bson:"message" json:"message"`
+	Time    int64  `bson:"time" json:"time"`
+}
+
+// ChatMessage represents a per-challenge chat message
+type ChatMessage struct {
+	UserID     string `bson:"userId" json:"userId"`
+	ProfilePic string `bson:"profilePic" json:"profilePic"`
+	Message    string `bson:"message" json:"message"`
+	Time       int64  `bson:"time" json:"time"`
+}
+
+// ParticipantRank captures a user's rank-related data on a leaderboard
+type ParticipantRank struct {
+	UserID     string `json:"userId"`
+	TotalScore int    `json:"totalScore"`
+	GlobalRank int    `json:"globalRank"`
+	Rank       int    `json:"rank"`
 }

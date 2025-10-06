@@ -1,19 +1,22 @@
 package global
 
 import (
+	"time"
+
 	"github.com/lijuuu/ChallengeWssManagerService/internal/jwt"
-	"github.com/lijuuu/ChallengeWssManagerService/internal/leaderboard"
 	localstate "github.com/lijuuu/ChallengeWssManagerService/internal/local"
-	"github.com/lijuuu/ChallengeWssManagerService/internal/repo"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/ports"
 	"github.com/panjf2000/ants/v2"
 )
 
-// State holds the application state shared across WebSocket and service layers
+// state groups shared dependencies used by websocket handlers and grpc services.
 type State struct {
-	Redis              *repo.RedisRepository
-	Mongo              *repo.MongoRepository
+	Redis              ports.RedisRepository
+	Mongo              ports.MongoRepository
 	LocalState         *localstate.LocalStateManager
-	LeaderboardManager *leaderboard.LeaderboardManager
+	LeaderboardManager ports.Leaderboard
 	JwtManager         *jwt.JWTManager
 	AntsWorkerPool     *ants.Pool
+	// Challenge scheduler for managing challenge timers globally
+	ChallengeSchedulers map[string]*time.Timer
 }

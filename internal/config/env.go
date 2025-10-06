@@ -17,7 +17,6 @@ type Config struct {
 	RedisURL          string
 	RedisPassword     string
 	RedisDB           int
-
 	JWTSecret string
 
 	APIGatewayTokenCheckURL string
