@@ -8,6 +8,22 @@ import (
 )
 
 func ChallengeDocumentFromProto(pb *challengePb.ChallengeRecord, hideProblems bool) *model.ChallengeDocument {
+	return legacyChallengeDocumentFromProto(pb, hideProblems)
+}
+
+func ChallengesToProto(challenges []*model.ChallengeDocument, hideProblems bool) []*challengePb.ChallengeRecord {
+	return legacyChallengesToProto(challenges, hideProblems)
+}
+
+func ToPtrSlice(in []model.ChallengeDocument) []*model.ChallengeDocument {
+	out := make([]*model.ChallengeDocument, len(in))
+	for i := range in {
+		out[i] = &in[i]
+	}
+	return out
+}
+
+func legacyChallengeDocumentFromProto(pb *challengePb.ChallengeRecord, hideProblems bool) *model.ChallengeDocument {
 	participants := make(map[string]*model.ParticipantMetadata)
 	for k, v := range pb.Participants {
 		participants[k] = &model.ParticipantMetadata{
@@ -65,7 +81,7 @@ func ChallengeDocumentFromProto(pb *challengePb.ChallengeRecord, hideProblems bo
 	}
 }
 
-func ChallengesToProto(challenges []*model.ChallengeDocument, hideProblems bool) []*challengePb.ChallengeRecord {
+func legacyChallengesToProto(challenges []*model.ChallengeDocument, hideProblems bool) []*challengePb.ChallengeRecord {
 	protoChallenges := make([]*challengePb.ChallengeRecord, 0, len(challenges))
 	for _, ch := range challenges {
 		record := &challengePb.ChallengeRecord{
@@ -124,12 +140,4 @@ func ChallengesToProto(challenges []*model.ChallengeDocument, hideProblems bool)
 		protoChallenges = append(protoChallenges, record)
 	}
 	return protoChallenges
-}
-
-func ToPtrSlice(in []model.ChallengeDocument) []*model.ChallengeDocument {
-	out := make([]*model.ChallengeDocument, len(in))
-	for i := range in {
-		out[i] = &in[i]
-	}
-	return out
 }

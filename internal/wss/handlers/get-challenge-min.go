@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/constants"
@@ -36,7 +37,15 @@ func GetChallengeMinHandler(ctx *wsstypes.WsContext) error {
 		return broadcasts.SendErrorWithType(ctx.Conn, constants.GET_CHALLENGE_MIN, "Challenge not found", nil)
 	}
 
-	// strip fields to keep payload lightweight
+	// strip fields to keep payload lightweight and include lobby info
+	lobbyActive := ch.StartTime > 0 && time.Now().Before(time.Unix(ch.StartTime, 0))
+	countdown := int64(0)
+	if lobbyActive {
+		countdown = time.Unix(ch.StartTime, 0).Unix() - time.Now().Unix()
+		if countdown < 0 {
+			countdown = 0
+		}
+	}
 	min := map[string]any{
 		"challengeId": ch.ChallengeID,
 		"title":       ch.Title,
@@ -45,6 +54,10 @@ func GetChallengeMinHandler(ctx *wsstypes.WsContext) error {
 		"createdAt":   ch.CreatedAt,
 		"startTime":   ch.StartTime,
 		"timeLimit":   ch.TimeLimit,
+		"lobby": map[string]any{
+			"active":    lobbyActive,
+			"countdown": countdown,
+		},
 	}
 
 	return broadcasts.SendJSON(ctx.Conn, map[string]any{

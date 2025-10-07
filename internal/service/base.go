@@ -17,10 +17,15 @@ type ChallengeService struct {
 
 // NewChallengeService constructs a ChallengeService from the shared state.
 func NewChallengeService(state *global.State) *ChallengeService {
-	return &ChallengeService{
+	svc := &ChallengeService{
 		GlobalState: state,
 		RedisRepo:   state.Redis,
 		MongoRepo:   state.Mongo,
 		Board:       state.LeaderboardManager,
 	}
+	// wire back reference for ws to call schedulers
+	if state != nil {
+		state.ServiceRef = svc
+	}
+	return svc
 }

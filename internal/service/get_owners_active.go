@@ -24,8 +24,10 @@ func (s *ChallengeService) GetOwnersActiveChallenges(ctx context.Context, req *c
 			log.Printf("[GetOwnersActiveChallenges] Skipping challenge %s due to fetch error: %v", id, err)
 			continue
 		}
-		if challenge.CreatorID == req.UserId && challenge.Status == constants.CHALLENGE_OPEN || challenge.Status == constants.CHALLENGE_STARTED{
-			log.Printf("[GetOwnersActiveChallenges] Challenge %s belongs to user %s", id, req.UserId)
+		// Owner can always see; participants can see to allow reconnects
+		if (challenge.CreatorID == req.UserId || challenge.Participants[req.UserId] != nil) &&
+			(challenge.Status == constants.CHALLENGE_OPEN || challenge.Status == constants.CHALLENGE_STARTED) {
+			log.Printf("[GetOwnersActiveChallenges] Challenge %s visible to user %s", id, req.UserId)
 			challenges = append(challenges, challenge)
 		}
 	}

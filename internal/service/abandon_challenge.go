@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"log"
 
+	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/wss/broadcasts"
 	challengePb "github.com/lijuuu/GlobalProtoXcode/ChallengeService"
 )
@@ -29,16 +29,14 @@ func (s *ChallengeService) AbandonChallenge(ctx context.Context, req *challengeP
 		log.Printf("[AbandonChallenge] Warning: Failed to cleanup leaderboard for challenge %s: %v", req.ChallengeId, err)
 	}
 
-	// Trigger MongoDB persistence for ABANDONED challenge
-	if err := s.persistChallengeToMongoDB(ctx, req.ChallengeId); err != nil {
-		fmt.Printf("Warning: Failed to persist abandoned challenge %s to MongoDB: %v\n", req.ChallengeId, err)
-	}
-
-	// Broadcast the abandon event using the new method with clients
-	if s.GlobalState != nil && s.GlobalState.LocalState != nil {
-		wsClients := s.GlobalState.LocalState.GetAllWSClients(challenge.ChallengeID)
-		if len(wsClients) > 0 {
-			broadcasts.BroadcastChallengeAbandonWithClients(wsClients, challenge.ChallengeID, challenge.CreatorID)
+	// Reuse unified terminal-state flow: broadcast and schedule graceful cleanup
+	if err := s.updateChallengeStatus(ctx, req.ChallengeId, model.ChallengeAbandon); err != nil {
+		// Fall back to direct broadcast if status update fails
+		if s.GlobalState != nil && s.GlobalState.LocalState != nil {
+			wsClients := s.GlobalState.LocalState.GetAllWSClients(challenge.ChallengeID)
+			if len(wsClients) > 0 {
+				broadcasts.BroadcastChallengeAbandonWithClients(wsClients, challenge.ChallengeID, challenge.CreatorID)
+			}
 		}
 	}
 

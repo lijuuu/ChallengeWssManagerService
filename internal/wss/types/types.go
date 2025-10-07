@@ -19,6 +19,12 @@ type WsContext struct {
 	Claims    *jwt.CustomClaims
 }
 
+// ForceStartPayload is used by owner to force start a challenge
+type ForceStartPayload struct {
+	UserId      string `json:"userId"`
+	ChallengeId string `json:"challengeId"`
+}
+
 type WsMessageRequest struct {
 	Type    string         `json:"type"`
 	Payload map[string]any `json:"payload"`

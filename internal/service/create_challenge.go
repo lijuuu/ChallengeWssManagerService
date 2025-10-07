@@ -13,9 +13,7 @@ import (
 )
 
 func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb.ChallengeRecord) (*challengePb.ChallengeRecord, error) {
-
 	fmt.Println("creating challenge ", req)
-	// Check for active challenges using Redis
 	canCreate, err := s.GlobalState.Redis.CanCreate(ctx, req.CreatorId)
 	if err != nil {
 		return nil, err
@@ -56,10 +54,22 @@ func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb
 
 	modelChallengeDoc.Status = constants.CHALLENGE_OPEN
 	modelChallengeDoc.TimeLimit = req.TimeLimitMillis
+	// Ensure arrays exist for Mongo appends from the start
+	if modelChallengeDoc.Notifications == nil {
+		modelChallengeDoc.Notifications = make([]model.Notification, 0)
+	}
+	if modelChallengeDoc.Chat == nil {
+		modelChallengeDoc.Chat = make([]model.ChatMessage, 0)
+	}
 
-	// Create challenge in Redis only
+	// Create challenge in Redis
 	if err := s.GlobalState.Redis.CreateChallenge(ctx, modelChallengeDoc); err != nil {
 		return nil, err
+	}
+
+	// Upsert initial challenge document to Mongo immediately (immutable metadata + empty chat/notifs)
+	if err := s.GlobalState.Mongo.PersistChallengeFromRedis(ctx, modelChallengeDoc); err != nil {
+		return nil, fmt.Errorf("failed to create challenge document in Mongo: %w", err)
 	}
 
 	// Initialize leaderboard for the new challenge
@@ -73,12 +83,16 @@ func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb
 		}
 	}
 
-	endTime := time.Unix(req.StartTimeUnix, 0).Add(time.Millisecond * time.Duration(req.TimeLimitMillis))
-	duration := time.Until(endTime) // gives a proper time.Duration from now
-	if duration < 0 {
-		duration = 0 // in case the start time + limit is already past
-	}
+	// schedule challenge start at startTime
+	startAt := time.Unix(req.StartTimeUnix, 0)
+	s.ScheduleChallengeStart(modelChallengeDoc.ChallengeID, startAt)
 
+	// also schedule finish relative to start time + time limit
+	endTime := startAt.Add(time.Millisecond * time.Duration(req.TimeLimitMillis))
+	duration := time.Until(endTime)
+	if duration < 0 {
+		duration = 0
+	}
 	s.ScheduleChallengeFinish(modelChallengeDoc.ChallengeID, duration)
 
 	return req, nil

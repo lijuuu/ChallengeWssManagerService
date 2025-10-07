@@ -75,10 +75,9 @@ func main() {
 		ChallengeSchedulers: make(map[string]*time.Timer),
 	}
 
-	
 	//grpc service implementation using shared state.
 	challengeService := service.NewChallengeService(globalState)
-	
+
 	//on server restarts check redis and update whole active challenge's schedulers.
 	challengeService.WarmUpScheduler(context.Background())
 	//start the grpc server alongside the websocket server.
@@ -128,6 +127,9 @@ func main() {
 	//refetch challenge details (requires a valid token).
 	dispatcher.RegisterWithMiddleware(wsstypes.RETRIEVE_CHALLENGE, wsshandler.RetreiveChallenge, jwtMiddleware)
 
+	// owner can force start the challenge (requires a valid token)
+	dispatcher.RegisterWithMiddleware(constants.WS_CHALLENGE_STARTED, wsshandler.ForceStartHandler, jwtMiddleware)
+
 	//fetch current leaderboard (requires a valid token).
 	dispatcher.RegisterWithMiddleware(wsstypes.CURRENT_LEADERBOARD, wsshandler.GetLeaderboardHandler, jwtMiddleware)
 
@@ -139,7 +141,6 @@ func main() {
 	dispatcher.RegisterWithMiddleware(constants.WHOLE_NOTIFICATION, wsshandler.GetNotificationsHandler, jwtMiddleware)
 	dispatcher.RegisterWithMiddleware(constants.WHOLE_CHAT, wsshandler.GetChatHandler, jwtMiddleware)
 	dispatcher.RegisterWithMiddleware(constants.PUSH_NEW_CHAT, wsshandler.PushNewChatHandler, jwtMiddleware)
-	dispatcher.RegisterWithMiddleware(constants.PUSH_NEW_CHAT, wsshandler.PushNewChatSyncHandler, jwtMiddleware)
 	dispatcher.RegisterWithMiddleware(constants.PUSH_NEW_NOTIFICATION, wsshandler.PushNewNotificationHandler, jwtMiddleware)
 
 	http.HandleFunc("/ws", wss.WsHandler(dispatcher, globalState))

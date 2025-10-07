@@ -108,7 +108,9 @@ func (lsm *LocalStateManager) RemoveWSClient(challengeID, userID string) {
 	defer state.MU.Unlock()
 
 	if conn, exists := state.WSClients[userID]; exists {
-		conn.Close()
+		if conn != nil {
+			conn.Close()
+		}
 		delete(state.WSClients, userID)
 	}
 }
@@ -185,7 +187,9 @@ func (lsm *LocalStateManager) CleanupChallenge(challengeID string) {
 
 	// Close all WebSocket connections
 	for _, conn := range state.WSClients {
-		conn.Close()
+		if conn != nil {
+			conn.Close()
+		}
 	}
 
 	// Close event channel

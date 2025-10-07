@@ -19,4 +19,6 @@ type State struct {
 	AntsWorkerPool     *ants.Pool
 	// Challenge scheduler for managing challenge timers globally
 	ChallengeSchedulers map[string]*time.Timer
+	// ServiceRef allows ws handlers to call scheduling helpers
+	ServiceRef ports.ChallengeServicePorts
 }

@@ -188,3 +188,19 @@ func (r *MongoRepository) GetOwnersActiveChallenges(ctx context.Context, userID 
 	}
 	return results, nil
 }
+
+// AppendChatMessage appends a chat message to a challenge's chat array in Mongo.
+func (r *MongoRepository) AppendChatMessage(ctx context.Context, challengeId string, msg model.ChatMessage) error {
+	filter := bson.M{"challengeId": challengeId}
+	update := bson.M{"$push": bson.M{"chat": msg}}
+	_, err := r.challenges.UpdateOne(ctx, filter, update)
+	return err
+}
+
+// AppendNotification appends a notification to a challenge's notifications array in Mongo.
+func (r *MongoRepository) AppendNotification(ctx context.Context, challengeId string, n model.Notification) error {
+	filter := bson.M{"challengeId": challengeId}
+	update := bson.M{"$push": bson.M{"notifications": n}}
+	_, err := r.challenges.UpdateOne(ctx, filter, update)
+	return err
+}

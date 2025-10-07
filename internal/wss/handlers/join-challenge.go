@@ -94,7 +94,7 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 
 	if challengeDoc.Status == model.ChallengeAbandon || challengeDoc.Status == model.ChallengeEnded || utils.IsChallengeExpired(challengeDoc) {
 		// ctx.Conn.Close()
-		fmt.Println("challengeDoc ",challengeDoc)
+		fmt.Println("challengeDoc ", challengeDoc)
 		fmt.Println("challenge is expired, ", utils.IsChallengeExpired(challengeDoc))
 		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge is abandoned", nil)
 	}
@@ -107,6 +107,13 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 	}
 
 	log.Printf("[%s] [JoinChallenge] Access granted for challenge %s (took %v)", requestID, payload.ChallengeId, time.Since(startRepoCheck))
+
+	// If challenge already started, block new joins (allow only existing participants)
+	if challengeDoc.Status == model.ChallengeStarted {
+		if _, ok := challengeDoc.Participants[userData.UserID]; !ok {
+			return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge already started; cannot join", nil)
+		}
+	}
 
 	//add or refresh the participant in redis.
 	participant, exists := challengeDoc.Participants[userData.UserID]
@@ -139,7 +146,36 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 	wsClients := ctx.State.LocalState.GetAllWSClients(payload.ChallengeId)
 	broadcasts.BroadcastEntityJoinedWithClients(wsClients, userData.UserID, payload.ChallengeId, userData.UserID == challengeDoc.CreatorID)
 
-	challengeToken, _ := ctx.State.JwtManager.GenerateToken(payload.UserId, payload.ChallengeId, time.Duration(challengeDoc.TimeLimit)+constants.BufferTime)
+	// if lobby is active, optionally send lobby info to the joining client
+	lobbyActive := challengeDoc.StartTime > 0 && time.Now().Before(time.Unix(challengeDoc.StartTime, 0))
+	if lobbyActive {
+		_ = broadcasts.SendJSON(ctx.Conn, map[string]any{
+			"type":   constants.GET_CHALLENGE_MIN,
+			"status": "ok",
+			"payload": map[string]any{
+				"challengeId": challengeDoc.ChallengeID,
+				"lobby": map[string]any{
+					"active":    true,
+					"countdown": time.Unix(challengeDoc.StartTime, 0).Unix() - time.Now().Unix(),
+				},
+			},
+		})
+	}
+
+	// token lifetime should cover from now through end time (start + limit) plus buffer
+	var tokenTTL time.Duration
+	if challengeDoc.StartTime > 0 {
+		endAt := time.Unix(challengeDoc.StartTime, 0).Add(time.Duration(challengeDoc.TimeLimit) * time.Millisecond)
+		dur := time.Until(endAt)
+		if dur < 0 {
+			dur = 0
+		}
+		tokenTTL = dur + constants.BufferTime
+	} else {
+		tokenTTL = time.Duration(challengeDoc.TimeLimit) + constants.BufferTime
+	}
+
+	challengeToken, _ := ctx.State.JwtManager.GenerateToken(payload.UserId, payload.ChallengeId, tokenTTL)
 
 	return broadcasts.SendJSON(ctx.Conn, map[string]interface{}{
 		"type":    wsstypes.JOIN_CHALLENGE,

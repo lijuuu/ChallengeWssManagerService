@@ -28,7 +28,7 @@ func (r *RedisRepository) CreateChallenge(ctx context.Context, challenge *model.
 		return fmt.Errorf("failed to marshal challenge: %w", err)
 	}
 
-	// fmt.Println("create challenge ", string(data))
+	fmt.Println("create challenge ", string(data))
 
 	return r.client.Set(ctx, key, data, 0).Err()
 }

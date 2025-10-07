@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/constants"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/wss/broadcasts"
 	wsstypes "github.com/lijuuu/ChallengeWssManagerService/internal/wss/types"
 )
@@ -37,6 +39,13 @@ func GetChallengeDataHandler(ctx *wsstypes.WsContext) error {
 	}
 
 	leaderboard, _ := ctx.State.LeaderboardManager.GetLeaderboard(payload.ChallengeId, 100, &ch)
+
+	// hide processedProblemIds and problemCount before start time and in lobby
+	isBeforeStart := ch.StartTime > 0 && time.Now().Before(time.Unix(ch.StartTime, 0))
+	if isBeforeStart || ch.Status == model.ChallengeOpen {
+		ch.ProcessedProblemIds = nil
+		ch.ProblemCount = 0
+	}
 
 	return broadcasts.SendJSON(ctx.Conn, map[string]any{
 		"type":   constants.GET_CHALLENGE_DATA,

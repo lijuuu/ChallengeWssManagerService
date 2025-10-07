@@ -37,7 +37,10 @@ func (s *ChallengeService) PushSubmissionStatus(ctx context.Context, req *challe
 		return &challengePb.PushSubmissionStatusResponse{Message: "challenge not found", Success: false}, err
 	}
 
-	// Stop accepting submissions after timer end or terminal status
+	// Stop accepting submissions before start, or after end/terminal status
+	if challenge.Status != model.ChallengeStarted {
+		return &challengePb.PushSubmissionStatusResponse{Message: "challenge not started", Success: false}, nil
+	}
 	if challenge.Status == model.ChallengeEnded || challenge.Status == model.ChallengeAbandon || utils.IsChallengeExpired(challenge) {
 		return &challengePb.PushSubmissionStatusResponse{Message: "challenge has ended", Success: false}, nil
 	}

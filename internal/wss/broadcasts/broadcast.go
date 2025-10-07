@@ -152,6 +152,16 @@ func BroadcastGameFinished(wsClients map[string]*websocket.Conn, challengeID str
 	BroadcastStandardMessage(wsClients, constants.GAME_FINISHED, payload, true, nil)
 }
 
+// broadcastgamestarted notifies clients that the game has started.
+func BroadcastGameStarted(wsClients map[string]*websocket.Conn, challengeID string, startTime int64) {
+	payload := map[string]any{
+		"challengeId": challengeID,
+		"startTime":   startTime,
+		"time":        time.Now(),
+	}
+	BroadcastStandardMessage(wsClients, constants.WS_CHALLENGE_STARTED, payload, true, nil)
+}
+
 // broadcastchatmessage sends a chat message to all clients in a challenge.
 func BroadcastChatMessage(wsClients map[string]*websocket.Conn, challengeID string, message map[string]any) {
 	payload := map[string]any{

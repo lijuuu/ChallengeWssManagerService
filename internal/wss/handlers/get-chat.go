@@ -30,16 +30,12 @@ func GetChatHandler(ctx *wsstypes.WsContext) error {
 		return broadcasts.SendErrorWithType(ctx.Conn, constants.WHOLE_CHAT, "Invalid payload format", nil)
 	}
 
-	ch, err := ctx.State.Redis.GetChallengeByID(context.Background(), payload.ChallengeId)
+	ch, err := ctx.State.Mongo.GetChallengeByID(context.Background(), payload.ChallengeId)
 	if err != nil {
 		return broadcasts.SendErrorWithType(ctx.Conn, constants.WHOLE_CHAT, "Challenge not found", nil)
 	}
 
-	return broadcasts.SendJSON(ctx.Conn, map[string]any{
-		"type":   constants.WHOLE_CHAT,
-		"status": "ok",
-		"payload": map[string]any{
-			"chat": ch.Chat,
-		},
+	return broadcasts.SendStandardSuccess(ctx.Conn, constants.WHOLE_CHAT, map[string]any{
+		"chat": ch.Chat,
 	})
 }

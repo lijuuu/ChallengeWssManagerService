@@ -40,14 +40,39 @@ func (s *ChallengeService) updateChallengeStatus(ctx context.Context, challengeI
 		return fmt.Errorf("failed to update challenge status: %w", err)
 	}
 
+	if newStatus == model.ChallengeStarted {
+		if s.GlobalState.LocalState != nil {
+			wsClients := s.GlobalState.LocalState.GetAllWSClients(challengeID)
+			broadcasts.BroadcastGameStarted(wsClients, challengeID, challenge.StartTime)
+		}
+		_ = s.GlobalState.Mongo.AppendNotification(ctx, challengeID, model.Notification{
+			Type:    "SYSTEM",
+			Message: "Challenge has started",
+			Time:    time.Now().Unix(),
+		})
+	}
+
 	if newStatus == model.ChallengeEnded || newStatus == model.ChallengeAbandon {
 		fmt.Printf("[Event] Challenge %s status set to %s\n", challengeID, newStatus)
+
+		// Store system notification in Mongo for per-challenge logs
+		_ = s.GlobalState.Mongo.AppendNotification(ctx, challengeID, model.Notification{
+			Type:    "SYSTEM",
+			Message: fmt.Sprintf("Challenge status changed to %s", newStatus),
+			Time:    time.Now().Unix(),
+		})
 
 		if s.GlobalState.LocalState != nil {
 			wsClients := s.GlobalState.LocalState.GetAllWSClients(challengeID)
 
 			fmt.Printf("[Broadcast] GAME_FINISHED for challenge %s\n", challengeID)
 			broadcasts.BroadcastGameFinished(wsClients, challengeID)
+			// Also push notification to connected clients
+			broadcasts.BroadcastStandardMessage(wsClients, constants.PUSH_NEW_NOTIFICATION, model.Notification{
+				Type:    "SYSTEM",
+				Message: fmt.Sprintf("Challenge status changed to %s", newStatus),
+				Time:    time.Now().Unix(),
+			}, true, nil)
 
 			if newStatus == model.ChallengeAbandon {
 				fmt.Printf("[Broadcast] CREATOR_ABANDON for challenge %s by user %s\n", challengeID, challenge.CreatorID)
@@ -80,6 +105,45 @@ func (s *ChallengeService) ScheduleChallengeFinish(challengeID string, duration 
 		ctx := context.Background()
 		if err := s.HandleChallengeTimeout(ctx, challengeID); err != nil {
 			fmt.Printf("Error handling challenge timeout for %s: %v\n", challengeID, err)
+		}
+	})
+
+	s.GlobalState.ChallengeSchedulers[challengeID] = timer
+}
+
+// ScheduleChallengeStart sets up a timer to start a challenge at startTime.
+func (s *ChallengeService) ScheduleChallengeStart(challengeID string, startAt time.Time) {
+	if s.GlobalState.ChallengeSchedulers == nil {
+		s.GlobalState.ChallengeSchedulers = make(map[string]*time.Timer)
+	}
+
+	// cancel previous timer if exists
+	if timer, ok := s.GlobalState.ChallengeSchedulers[challengeID]; ok {
+		timer.Stop()
+	}
+
+	delay := time.Until(startAt)
+	if delay < 0 {
+		delay = 0
+	}
+
+	fmt.Printf("[Timer] Scheduling challenge %s to start in %v\n", challengeID, delay)
+
+	timer := time.AfterFunc(delay, func() {
+		fmt.Printf("[Timer] Start timer fired for challenge %s, starting now\n", challengeID)
+		ctx := context.Background()
+		// Transition to STARTED and broadcast
+		_ = s.updateChallengeStatus(ctx, challengeID, model.ChallengeStarted)
+
+		// After starting, schedule finish according to time limit from now until start+limit
+		ch, err := s.GlobalState.Redis.GetChallenge(ctx, challengeID)
+		if err == nil {
+			endAt := time.Unix(ch.StartTime, 0).Add(time.Duration(ch.TimeLimit) * time.Millisecond)
+			dur := time.Until(endAt)
+			if dur < 0 {
+				dur = 0
+			}
+			s.ScheduleChallengeFinish(challengeID, dur)
 		}
 	})
 
@@ -162,11 +226,31 @@ func (s *ChallengeService) WarmUpScheduler(ctx context.Context) error {
 	openChallengeIds, _ := s.RedisRepo.GetChallengesByStatus(ctx, constants.CHALLENGE_OPEN)
 	startedChallengeIds, _ := s.RedisRepo.GetChallengesByStatus(ctx, constants.CHALLENGE_STARTED)
 
-	challengeIds := append(openChallengeIds, startedChallengeIds...)
+	fmt.Printf("[Timer] WarmUpScheduler: open=%v started=%v\n", openChallengeIds, startedChallengeIds)
 
-	fmt.Printf("[Timer] WarmingUp Challenge Timeouts for %v\n", challengeIds)
-	for _, id := range challengeIds {
-		s.HandleChallengeTimeout(ctx, id)
+	// For OPEN challenges: schedule start at startTime and finish at startTime+limit
+	for _, id := range openChallengeIds {
+		ch, err := s.RedisRepo.GetChallengeByID(ctx, id)
+		if err != nil {
+			fmt.Printf("[Timer] WarmUp OPEN get challenge %s failed: %v\n", id, err)
+			continue
+		}
+		if ch.StartTime > 0 {
+			s.ScheduleChallengeStart(id, time.Unix(ch.StartTime, 0))
+			endAt := time.Unix(ch.StartTime, 0).Add(time.Duration(ch.TimeLimit) * time.Millisecond)
+			s.ScheduleChallengeFinish(id, time.Until(endAt))
+		}
+	}
+
+	// For STARTED challenges: schedule finish at startTime+limit from now
+	for _, id := range startedChallengeIds {
+		ch, err := s.RedisRepo.GetChallengeByID(ctx, id)
+		if err != nil {
+			fmt.Printf("[Timer] WarmUp STARTED get challenge %s failed: %v\n", id, err)
+			continue
+		}
+		endAt := time.Unix(ch.StartTime, 0).Add(time.Duration(ch.TimeLimit) * time.Millisecond)
+		s.ScheduleChallengeFinish(id, time.Until(endAt))
 	}
 
 	return nil

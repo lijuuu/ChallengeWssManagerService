@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
 )
@@ -34,4 +35,12 @@ type MongoRepository interface {
 	GetChallengeHistory(ctx context.Context, userID string, page, pageSize int, isPrivate bool) ([]model.ChallengeDocument, error)
 	GetChallengeByID(ctx context.Context, challengeId string) (model.ChallengeDocument, error)
 	GetAllChallenges(ctx context.Context) ([]model.ChallengeDocument, error)
+	// Chat/Notifications
+	AppendChatMessage(ctx context.Context, challengeId string, msg model.ChatMessage) error
+	AppendNotification(ctx context.Context, challengeId string, n model.Notification) error
+}
+
+// ChallengeServicePorts exposes scheduling helpers to ws layer
+type ChallengeServicePorts interface {
+	ScheduleChallengeFinish(challengeID string, duration time.Duration)
 }

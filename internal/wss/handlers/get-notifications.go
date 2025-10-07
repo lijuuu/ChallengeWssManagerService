@@ -30,16 +30,12 @@ func GetNotificationsHandler(ctx *wsstypes.WsContext) error {
 		return broadcasts.SendErrorWithType(ctx.Conn, constants.GET_NOTIFICATIONS, "Invalid payload format", nil)
 	}
 
-	ch, err := ctx.State.Redis.GetChallengeByID(context.Background(), payload.ChallengeId)
+	ch, err := ctx.State.Mongo.GetChallengeByID(context.Background(), payload.ChallengeId)
 	if err != nil {
 		return broadcasts.SendErrorWithType(ctx.Conn, constants.GET_NOTIFICATIONS, "Challenge not found", nil)
 	}
 
-	return broadcasts.SendJSON(ctx.Conn, map[string]any{
-		"type":   constants.GET_NOTIFICATIONS,
-		"status": "ok",
-		"payload": map[string]any{
-			"notifications": ch.Notifications,
-		},
+	return broadcasts.SendStandardSuccess(ctx.Conn, constants.WHOLE_NOTIFICATION, map[string]any{
+		"notifications": ch.Notifications,
 	})
 }
