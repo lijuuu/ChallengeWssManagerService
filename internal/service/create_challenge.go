@@ -12,8 +12,7 @@ import (
 	challengePb "github.com/lijuuu/GlobalProtoXcode/ChallengeService"
 )
 
-func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb.ChallengeRecord) (*challengePb.ChallengeRecord, error) {
-	fmt.Println("creating challenge ", req)
+func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb.ChallengeRecord) (*challengePb.CreateChallengeResponse, error) {
 	canCreate, err := s.GlobalState.Redis.CanCreate(ctx, req.CreatorId)
 	if err != nil {
 		return nil, err
@@ -95,5 +94,8 @@ func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb
 	}
 	s.ScheduleChallengeFinish(modelChallengeDoc.ChallengeID, duration)
 
-	return req, nil
+	return &challengePb.CreateChallengeResponse{
+		Success: true,
+		Challenge: req,
+	}, nil
 }

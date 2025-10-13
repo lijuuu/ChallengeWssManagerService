@@ -45,16 +45,17 @@ type ChallengeConfig struct {
 }
 
 type ChallengeDocument struct {
-	ChallengeID         string                           `bson:"challengeId" json:"challengeId"`
-	CreatorID           string                           `bson:"creatorId" json:"creatorId"`
-	CreatedAt           int64                            `bson:"createdAt" json:"createdAt"`
-	Title               string                           `bson:"title" json:"title"`
-	IsPrivate           bool                             `bson:"isPrivate" json:"isPrivate"`
-	Password            string                           `bson:"password" json:"password"`
-	Status              string                           `bson:"status" json:"status"`
-	TimeLimit           int64                            `bson:"timeLimit" json:"timeLimit"`
-	StartTime           int64                            `bson:"startTime" json:"startTime"`
-	Participants        map[string]*ParticipantMetadata  `bson:"participants" json:"participants"`
+	ChallengeID         string                          `bson:"challengeId" json:"challengeId"`
+	CreatorID           string                          `bson:"creatorId" json:"creatorId"`
+	CreatedAt           int64                           `bson:"createdAt" json:"createdAt"`
+	Title               string                          `bson:"title" json:"title"`
+	IsPrivate           bool                            `bson:"isPrivate" json:"isPrivate"`
+	Password            string                          `bson:"password" json:"password"`
+	Status              string                          `bson:"status" json:"status"`
+	TimeLimit           int64                           `bson:"timeLimit" json:"timeLimit"`
+	StartTime           int64                           `bson:"startTime" json:"startTime"`
+	Participants        map[string]*ParticipantMetadata `bson:"participants" json:"participants"`
+	MaxParticipants     int                             `bson:"maxParticipants" json:"maxParticipants"`
 	Submissions         map[string]map[string]Submission `bson:"submissions" json:"submissions"`
 	Leaderboard         []*LeaderboardEntry              `bson:"leaderboard" json:"leaderboard"`
 	Config              *ChallengeConfig                 `bson:"config" json:"config"`

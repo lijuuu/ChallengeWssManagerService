@@ -8,12 +8,12 @@ import (
 
 func (s *ChallengeService) GetPostChallengeData(ctx context.Context, req *challengePb.GetPostChallengeDataRequest) (*challengePb.GetPostChallengeDataResponse, error) {
 	if req == nil || req.ChallengeId == "" {
-		return &challengePb.GetPostChallengeDataResponse{Success: false, ErrorMessage: "invalid request"}, nil
+		return &challengePb.GetPostChallengeDataResponse{Success: false, Message: "invalid request"}, nil
 	}
 
 	ch, err := s.MongoRepo.GetChallengeByID(ctx, req.ChallengeId)
 	if err != nil {
-		return &challengePb.GetPostChallengeDataResponse{Success: false, ErrorMessage: "challenge not found"}, nil
+		return &challengePb.GetPostChallengeDataResponse{Success: false, Message: "challenge not found"}, nil
 	}
 
 	out := &challengePb.PostChallengeDocument{

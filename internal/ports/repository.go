@@ -15,8 +15,8 @@ type RedisRepository interface {
 	UpdateChallenge(ctx context.Context, challenge *model.ChallengeDocument) error
 	DeleteChallenge(ctx context.Context, challengeID string) error
 
-	GetActiveChallenges(ctx context.Context) ([]string, error)
-	GetChallengesByStatus(ctx context.Context, status string) ([]string, error)
+	GetChallenges(ctx context.Context) ([]string, error)
+	GetChallengesByStatus(ctx context.Context, status []string) ([]string, error)
 
 	AddParticipant(ctx context.Context, challengeID, userID string, metadata *model.ParticipantMetadata) error
 	UpdateParticipant(ctx context.Context, challengeID, userID string, metadata *model.ParticipantMetadata) error

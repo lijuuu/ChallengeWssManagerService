@@ -1,0 +1,2 @@
+on abandon challenge- check for creatorId with userId from claims.
+if user is not creator dont show abandon

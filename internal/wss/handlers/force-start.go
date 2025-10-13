@@ -3,6 +3,7 @@ package wsshandler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -69,6 +70,8 @@ func ForceStartHandler(ctx *wsstypes.WsContext) error {
 		dur = 0
 	}
 	ctx.State.ServiceRef.ScheduleChallengeFinish(ch.ChallengeID, dur)
+
+	fmt.Println("challenge during forcstart ",ch.Participants)
 
 	return broadcasts.SendStandardSuccess(ctx.Conn, constants.WS_CHALLENGE_STARTED, map[string]any{"message": "started"})
 }

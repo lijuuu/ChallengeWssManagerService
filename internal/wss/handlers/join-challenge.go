@@ -109,6 +109,8 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 	log.Printf("[%s] [JoinChallenge] Access granted for challenge %s (took %v)", requestID, payload.ChallengeId, time.Since(startRepoCheck))
 
 	// If challenge already started, block new joins (allow only existing participants)
+	fmt.Println("challengeDoc ", challengeDoc.Participants)
+
 	if challengeDoc.Status == model.ChallengeStarted {
 		if _, ok := challengeDoc.Participants[userData.UserID]; !ok {
 			return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge already started; cannot join", nil)

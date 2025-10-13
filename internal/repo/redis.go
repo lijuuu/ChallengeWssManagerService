@@ -53,8 +53,8 @@ func (r *RedisRepository) DeleteChallenge(ctx context.Context, challengeID strin
 	return r.client.Del(ctx, key).Err()
 }
 
-// getactivechallenges lists all challenge ids currently stored.
-func (r *RedisRepository) GetActiveChallenges(ctx context.Context) ([]string, error) {
+// GetChallenges lists all challenge ids currently stored.
+func (r *RedisRepository) GetChallenges(ctx context.Context) ([]string, error) {
 	keys, err := r.client.Keys(ctx, "challenge:*").Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get challenge keys: %w", err)
@@ -70,8 +70,8 @@ func (r *RedisRepository) GetActiveChallenges(ctx context.Context) ([]string, er
 }
 
 // getchallengesbystatus returns challenge ids matching the given status.
-func (r *RedisRepository) GetChallengesByStatus(ctx context.Context, status string) ([]string, error) {
-	challengeIDs, err := r.GetActiveChallenges(ctx)
+func (r *RedisRepository) GetChallengesByStatus(ctx context.Context, status []string) ([]string, error) {
+	challengeIDs, err := r.GetChallenges(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -83,9 +83,13 @@ func (r *RedisRepository) GetChallengesByStatus(ctx context.Context, status stri
 			continue //w skip challenges we can't load
 		}
 
-		if string(challenge.Status) == status {
-			filteredIDs = append(filteredIDs, id)
+		for _, st := range status {
+			if string(challenge.Status) == st {
+				filteredIDs = append(filteredIDs, id)
+				continue
+			}
 		}
+
 	}
 
 	return filteredIDs, nil

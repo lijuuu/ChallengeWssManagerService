@@ -9,9 +9,9 @@ import (
 	challengePb "github.com/lijuuu/GlobalProtoXcode/ChallengeService"
 )
 
-func (s *ChallengeService) GetOwnersActiveChallenges(ctx context.Context, req *challengePb.GetOwnersActiveChallengesRequest) (*challengePb.ChallengeListResponse, error) {
+func (s *ChallengeService) GetOwnersActiveChallenges(ctx context.Context, req *challengePb.GetOwnersActiveChallengesRequest) (*challengePb.GetOwnersActiveChallengesResponse, error) {
 	log.Printf("[GetOwnersActiveChallenges] Fetching active challenges for user %v", req)
-	challengeIDs, err := s.GlobalState.Redis.GetActiveChallenges(ctx)
+	challengeIDs, err := s.GlobalState.Redis.GetChallengesByStatus(ctx, []string{model.ChallengeOpen, model.ChallengeStarted})
 	if err != nil {
 		log.Printf("[GetOwnersActiveChallenges] Error fetching active challenges: %v", err)
 		return nil, err
@@ -31,5 +31,8 @@ func (s *ChallengeService) GetOwnersActiveChallenges(ctx context.Context, req *c
 			challenges = append(challenges, challenge)
 		}
 	}
-	return &challengePb.ChallengeListResponse{Challenges: ChallengesToProto(ToPtrSlice(challenges), false)}, nil
+	return &challengePb.GetOwnersActiveChallengesResponse{List: &challengePb.ChallengeListResponse{
+		Challenges: ChallengesToProto(ToPtrSlice(challenges), false),
+	},
+	}, nil
 }

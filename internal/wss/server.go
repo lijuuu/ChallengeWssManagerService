@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/constants"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/global"
+	"github.com/lijuuu/ChallengeWssManagerService/internal/model"
 	"github.com/lijuuu/ChallengeWssManagerService/internal/wss/broadcasts"
 	wsstypes "github.com/lijuuu/ChallengeWssManagerService/internal/wss/types"
 )
@@ -80,17 +81,20 @@ func cleanupConnection(state *global.State, userID, challengeID string) {
 
 	log.Printf("[WS] cleaning up session: user=%s challenge=%s", userID, challengeID)
 
-	//remove participant from redis.
-	if err := state.Redis.RemoveParticipantInJoinPhase(context.Background(), challengeID, userID); err != nil {
-		log.Printf("[Redis] failed to remove from Redis: %v", err)
-	} else {
-		log.Printf("[Redis] user %s removed from Redis for challenge %s", userID, challengeID)
-	}
-
 	//fetch challenge info for accurate owner/participant broadcast.
 	challengeDoc, err := state.Redis.GetChallengeByID(context.Background(), challengeID)
 	if err != nil {
 		log.Printf("[WS] failed to get challenge for cleanup broadcast: %v", err)
+	}
+	//remove participant from redis.
+	//but dont remove if its in challengeStart phase
+
+	if challengeDoc.Status != model.ChallengeStarted {
+		if err := state.Redis.RemoveParticipantInJoinPhase(context.Background(), challengeID, userID); err != nil {
+			log.Printf("[Redis] failed to remove from Redis: %v", err)
+		} else {
+			log.Printf("[Redis] user %s removed from Redis for challenge %s", userID, challengeID)
+		}
 	}
 
 	//remove connection and session from local state.

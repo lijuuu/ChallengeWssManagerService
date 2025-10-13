@@ -223,8 +223,8 @@ func (s *ChallengeService) CancelChallengeTimer(challengeID string) {
 
 // WarmUpScheduler reinitializes timers for open/started challenges on server restart.
 func (s *ChallengeService) WarmUpScheduler(ctx context.Context) error {
-	openChallengeIds, _ := s.RedisRepo.GetChallengesByStatus(ctx, constants.CHALLENGE_OPEN)
-	startedChallengeIds, _ := s.RedisRepo.GetChallengesByStatus(ctx, constants.CHALLENGE_STARTED)
+	openChallengeIds, _ := s.RedisRepo.GetChallengesByStatus(ctx, []string{constants.CHALLENGE_OPEN})
+	startedChallengeIds, _ := s.RedisRepo.GetChallengesByStatus(ctx, []string{constants.CHALLENGE_STARTED})
 
 	fmt.Printf("[Timer] WarmUpScheduler: open=%v started=%v\n", openChallengeIds, startedChallengeIds)
 
