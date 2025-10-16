@@ -9,6 +9,7 @@ import (
 func (s *ChallengeService) GetChallengeHistory(ctx context.Context, req *challengePb.GetChallengeHistoryRequest) (*challengePb.GetChallengeHistoryResponse, error) {
 	page := int(req.GetPagination().GetPage())
 	pageSize := int(req.GetPagination().GetPageSize())
+	
 	challenges, err := s.GlobalState.Mongo.GetChallengeHistory(ctx, req.UserId, page, pageSize, req.GetIsPrivate())
 	if err != nil {
 		return &challengePb.GetChallengeHistoryResponse{
@@ -17,6 +18,7 @@ func (s *ChallengeService) GetChallengeHistory(ctx context.Context, req *challen
 			Message:   "failed to fetch history",
 		}, nil
 	}
+
 	resp := &challengePb.GetChallengeHistoryResponse{
 		Success: true,
 		Message: "Success",

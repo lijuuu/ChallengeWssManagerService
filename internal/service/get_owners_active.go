@@ -31,6 +31,7 @@ func (s *ChallengeService) GetOwnersActiveChallenges(ctx context.Context, req *c
 			challenges = append(challenges, challenge)
 		}
 	}
+
 	return &challengePb.GetOwnersActiveChallengesResponse{List: &challengePb.ChallengeListResponse{
 		Challenges: ChallengesToProto(ToPtrSlice(challenges), false),
 	},

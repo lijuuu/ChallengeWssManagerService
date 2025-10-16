@@ -49,6 +49,8 @@ github.com/lijuuu/GlobalProtoXcode v0.0.0-20251011165403-ac1b517ca991 h1:Ktlo3L+
 github.com/lijuuu/GlobalProtoXcode v0.0.0-20251011165403-ac1b517ca991/go.mod h1:Tt/SSoiRXSrQ+uVdaJrJsI5rWicuZcRDFOsrybrvclA=
 github.com/lijuuu/GlobalProtoXcode v0.0.0-20251011165711-7c3fe811a015 h1:ZA0k2rNzOWGKKcX7gmsigt6wL6dFE56MqvMpHonuA/Q=
 github.com/lijuuu/GlobalProtoXcode v0.0.0-20251011165711-7c3fe811a015/go.mod h1:Tt/SSoiRXSrQ+uVdaJrJsI5rWicuZcRDFOsrybrvclA=
+github.com/lijuuu/GlobalProtoXcode v0.0.0-20251013110351-2a7cbab57705 h1:QMx3lBuT2WKFOtBPWWxCTcVxYuFZueejWjeQWhzynKw=
+github.com/lijuuu/GlobalProtoXcode v0.0.0-20251013110351-2a7cbab57705/go.mod h1:Tt/SSoiRXSrQ+uVdaJrJsI5rWicuZcRDFOsrybrvclA=
 github.com/lijuuu/RedisBoard v0.0.0-20250617061554-f5fae0021242 h1:sUGSb3/1R7M5BcN12Vvkfx+iSM6+XHowGN27Arzw81g=
 github.com/lijuuu/RedisBoard v0.0.0-20250617061554-f5fae0021242/go.mod h1:wXEeA+Z6PmIJwu0lPBz0AbejQMtKjk4vvIxkUpd49h0=
 github.com/montanaflynn/stats v0.7.1 h1:etflOAAHORrCC44V+aR6Ftzort912ZU+YLiSTuV8eaE=

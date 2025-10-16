@@ -97,14 +97,14 @@ func cleanupConnection(state *global.State, userID, challengeID string) {
 		}
 	}
 
+	_, exist := challengeDoc.Participants[userID]
+
 	//remove connection and session from local state.
 	state.LocalState.RemoveWSClient(challengeID, userID)
-	state.LocalState.RemoveSession(challengeID, userID)
-
 	log.Printf("[WS] user %s removed from local state for challenge %s", userID, challengeID)
 
-	//notify remaining clients about the departure.
-	if err == nil {
+	//notify remaining clients about the departure only if the userId was part of the challenge
+	if err == nil && exist {
 		wsClients := state.LocalState.GetAllWSClients(challengeID)
 		broadcasts.BroadcastEntityLeftWithClients(wsClients, userID, challengeID, userID == challengeDoc.CreatorID)
 	}

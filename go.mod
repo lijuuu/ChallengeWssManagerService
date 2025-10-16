@@ -7,7 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
-	github.com/lijuuu/GlobalProtoXcode v0.0.0-20251011165711-7c3fe811a015
+	github.com/lijuuu/GlobalProtoXcode v0.0.0-20251013110351-2a7cbab57705
 	github.com/lijuuu/RedisBoard v0.0.0-20250617061554-f5fae0021242
 	github.com/panjf2000/ants/v2 v2.9.0
 	github.com/redis/go-redis/v9 v9.11.0

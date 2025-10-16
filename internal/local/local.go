@@ -13,7 +13,6 @@ type LocalStateManager struct {
 }
 
 type ChallengeLocalState struct {
-	Sessions  map[string]*model.Session
 	WSClients map[string]*websocket.Conn
 	MU        sync.RWMutex
 	EventChan chan model.Event
@@ -33,7 +32,7 @@ func (lsm *LocalStateManager) GetChallengeState(challengeID string) *ChallengeLo
 	state, exists := lsm.challengeStates[challengeID]
 	if !exists {
 		state = &ChallengeLocalState{
-			Sessions:  make(map[string]*model.Session),
+			// Sessions:  make(map[string]*model.Session),
 			WSClients: make(map[string]*websocket.Conn),
 			EventChan: make(chan model.Event, 100),
 		}
@@ -43,47 +42,6 @@ func (lsm *LocalStateManager) GetChallengeState(challengeID string) *ChallengeLo
 	return state
 }
 
-// AddSession adds a session to the challenge's local state
-func (lsm *LocalStateManager) AddSession(challengeID string, session *model.Session) {
-	state := lsm.GetChallengeState(challengeID)
-	state.MU.Lock()
-	defer state.MU.Unlock()
-
-	state.Sessions[session.UserID] = session
-}
-
-// RemoveSession removes a session from the challenge's local state
-func (lsm *LocalStateManager) RemoveSession(challengeID, userID string) {
-	lsm.mu.RLock()
-	state, exists := lsm.challengeStates[challengeID]
-	lsm.mu.RUnlock()
-
-	if !exists {
-		return
-	}
-
-	state.MU.Lock()
-	defer state.MU.Unlock()
-
-	delete(state.Sessions, userID)
-}
-
-// GetSession retrieves a session from the challenge's local state
-func (lsm *LocalStateManager) GetSession(challengeID, userID string) (*model.Session, bool) {
-	lsm.mu.RLock()
-	state, exists := lsm.challengeStates[challengeID]
-	lsm.mu.RUnlock()
-
-	if !exists {
-		return nil, false
-	}
-
-	state.MU.RLock()
-	defer state.MU.RUnlock()
-
-	session, found := state.Sessions[userID]
-	return session, found
-}
 
 // AddWSClient adds a WebSocket client to the challenge's local state
 func (lsm *LocalStateManager) AddWSClient(challengeID, userID string, conn *websocket.Conn) {

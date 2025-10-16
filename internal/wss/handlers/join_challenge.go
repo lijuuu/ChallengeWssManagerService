@@ -29,13 +29,11 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 	raw, err := json.Marshal(ctx.Payload)
 	if err != nil {
 		log.Printf("[%s] [JoinChallenge] Marshal error: %v", requestID, err)
-		// ctx.Conn.Close()
-		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Internal error", nil)
+		return utils.CloseConnectionWithError(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Internal error")
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		log.Printf("[%s] [JoinChallenge] Unmarshal error: %v", requestID, err)
-		// ctx.Conn.Close()
-		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Invalid payload format", nil)
+		return utils.CloseConnectionWithError(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Invalid payload format")
 	}
 	log.Printf("[%s] [JoinChallenge] Incoming request from userId %s IP: %s", requestID, payload.UserId, clientIP)
 
@@ -44,31 +42,27 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 	req, err := http.NewRequestWithContext(context.Background(), "GET", config.LoadConfig().APIGatewayTokenCheckURL, nil)
 	if err != nil {
 		log.Printf("[%s] [JoinChallenge] Auth request create fail: %v", requestID, err)
-		// ctx.Conn.Close()
-		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Internal auth setup error", nil)
+		return utils.CloseConnectionWithError(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Internal auth setup error")
 	}
 	req.Header.Set("Authorization", payload.Token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Printf("[%s] [JoinChallenge] Auth request failed: %v", requestID, err)
-		// ctx.Conn.Close()
-		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Authentication service unreachable", nil)
+		return utils.CloseConnectionWithError(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Authentication service unreachable")
 	}
-	// defer resp.Body.Close()
+	defer resp.Body.Close()
 
 	log.Printf("[%s] [JoinChallenge] Auth status: %d (took %v)", requestID, resp.StatusCode, time.Since(startAuth))
 
 	var authResp model.GenericResponse
 	if err := json.NewDecoder(resp.Body).Decode(&authResp); err != nil {
 		log.Printf("[%s] [JoinChallenge] Decode auth response failed: %v", requestID, err)
-		// ctx.Conn.Close()
-		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Failed to decode authentication", nil)
+		return utils.CloseConnectionWithError(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Failed to decode authentication")
 	}
 	if !authResp.Success {
 		log.Printf("[%s] [JoinChallenge] Auth failed: %v", requestID, authResp.Error)
-		// ctx.Conn.Close()
-		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Authentication failed", map[string]interface{}{
+		return utils.CloseUnauthorizedConnection(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Authentication failed", map[string]interface{}{
 			"error": authResp.Error,
 		})
 	}
@@ -77,8 +71,7 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 	authPayloadRaw, _ := json.Marshal(authResp.Payload)
 	if err := json.Unmarshal(authPayloadRaw, &userData); err != nil {
 		log.Printf("[%s] [JoinChallenge] Invalid auth payload structure: %v", requestID, err)
-		// ctx.Conn.Close()
-		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Invalid auth data", nil)
+		return utils.CloseConnectionWithError(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Invalid auth data")
 	}
 
 	log.Printf("[%s] [JoinChallenge] Authenticated user ID: %s", requestID, userData.UserID)
@@ -88,32 +81,44 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 	challengeDoc, err := ctx.State.Redis.GetChallengeByID(context.Background(), payload.ChallengeId)
 	if err != nil {
 		log.Printf("[%s] [JoinChallenge] Challenge not found in Redis: %v", requestID, err)
-		// ctx.Conn.Close()
-		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge not found", nil)
+		return utils.CloseConnectionWithError(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge not found")
 	}
 
+	//just checking scenarios- assuming whether the challenge is live (in JOin or started phase)
 	if challengeDoc.Status == model.ChallengeAbandon || challengeDoc.Status == model.ChallengeEnded || utils.IsChallengeExpired(challengeDoc) {
-		// ctx.Conn.Close()
 		fmt.Println("challengeDoc ", challengeDoc)
 		fmt.Println("challenge is expired, ", utils.IsChallengeExpired(challengeDoc))
-		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge is abandoned", nil)
+		return utils.CloseConnectionWithError(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge is abandoned")
 	}
 
 	//if the challenge is private, require the correct password.
 	if challengeDoc.IsPrivate && challengeDoc.Password != payload.Password {
 		log.Printf("[%s] [JoinChallenge] Access denied to challenge %s", requestID, payload.ChallengeId)
-		// ctx.Conn.Close()
-		return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Invalid challenge ID or password", nil)
+		return utils.CloseUnauthorizedConnection(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Invalid challenge ID or password", map[string]any{
+			"challengeId": payload.ChallengeId,
+			"reason":      "invalid_password",
+		})
 	}
 
 	log.Printf("[%s] [JoinChallenge] Access granted for challenge %s (took %v)", requestID, payload.ChallengeId, time.Since(startRepoCheck))
+
+	// Check max participants limit from Redis data
+	if len(challengeDoc.Participants) >= challengeDoc.MaxParticipants {
+		log.Printf("[%s] [JoinChallenge] Challenge at capacity: %d/%d participants", requestID, len(challengeDoc.Participants), challengeDoc.MaxParticipants)
+		return utils.CloseConnectionWithError(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge is at maximum capacity")
+	}
 
 	// If challenge already started, block new joins (allow only existing participants)
 	fmt.Println("challengeDoc ", challengeDoc.Participants)
 
 	if challengeDoc.Status == model.ChallengeStarted {
 		if _, ok := challengeDoc.Participants[userData.UserID]; !ok {
-			return broadcasts.SendErrorWithType(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge already started; cannot join", nil)
+			log.Printf("[%s] [JoinChallenge] Unauthorized access attempt: user %s not in participants for started challenge %s", requestID, userData.UserID, payload.ChallengeId)
+			return utils.CloseUnauthorizedConnection(ctx.Conn, wsstypes.JOIN_CHALLENGE, "Challenge already started; cannot join", map[string]any{
+				"challengeId": payload.ChallengeId,
+				"userId":      userData.UserID,
+				"reason":      "not_participant",
+			})
 		}
 	}
 
@@ -144,8 +149,8 @@ func JoinChallengeHandler(ctx *wsstypes.WsContext) error {
 	//track this websocket connection in local state.
 	ctx.State.LocalState.AddWSClient(payload.ChallengeId, userData.UserID, ctx.Conn)
 
-	//notify other clients in the same challenge.
 	wsClients := ctx.State.LocalState.GetAllWSClients(payload.ChallengeId)
+	//notify other clients in the same challenge.
 	broadcasts.BroadcastEntityJoinedWithClients(wsClients, userData.UserID, payload.ChallengeId, userData.UserID == challengeDoc.CreatorID)
 
 	// if lobby is active, optionally send lobby info to the joining client

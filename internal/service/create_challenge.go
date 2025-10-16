@@ -48,7 +48,7 @@ func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb
 		MaxEasyQuestions:   int(req.GetConfig().GetMaxEasyQuestions()),
 		MaxMediumQuestions: int(req.GetConfig().GetMaxMediumQuestions()),
 		MaxHardQuestions:   int(req.GetConfig().GetMaxHardQuestions()),
-		MaxUsers:           int(req.GetConfig().MaxUsers),
+		MaxUsers:           int(req.GetConfig().GetMaxUsers()),
 	}
 
 	modelChallengeDoc.Status = constants.CHALLENGE_OPEN
@@ -94,8 +94,9 @@ func (s *ChallengeService) CreateChallenge(ctx context.Context, req *challengePb
 	}
 	s.ScheduleChallengeFinish(modelChallengeDoc.ChallengeID, duration)
 
+
 	return &challengePb.CreateChallengeResponse{
-		Success: true,
+		Success:   true,
 		Challenge: req,
 	}, nil
 }

@@ -14,6 +14,8 @@ func (s *ChallengeService) GetActiveOpenChallenges(ctx context.Context, req *cha
 	}
 	isPrivate := false
 	challenges := s.fetchChallengesConcurrently(ctx, challengeIDs, isPrivate)
+
+
 	return &challengePb.GetActiveOpenChallengesResponse{List: &challengePb.ChallengeListResponse{
 		Challenges: ChallengesToProto(ToPtrSlice(challenges), true),
 		TotalCount: int64(len(challenges)),

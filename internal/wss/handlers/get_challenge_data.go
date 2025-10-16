@@ -40,8 +40,9 @@ func GetChallengeDataHandler(ctx *wsstypes.WsContext) error {
 
 	leaderboard, _ := ctx.State.LeaderboardManager.GetLeaderboard(payload.ChallengeId, 100, &ch)
 
-	// hide processedProblemIds and problemCount before start time and in lobby
+	//hide processedProblemIds and problemCount before start time and in lobby
 	isBeforeStart := ch.StartTime > 0 && time.Now().Before(time.Unix(ch.StartTime, 0))
+	
 	if isBeforeStart || ch.Status == model.ChallengeOpen {
 		ch.ProcessedProblemIds = nil
 		ch.ProblemCount = 0

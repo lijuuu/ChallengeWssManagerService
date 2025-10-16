@@ -17,7 +17,6 @@ const (
 const (
 	ChallengeOpen      = constants.CHALLENGE_OPEN
 	ChallengeStarted   = constants.CHALLENGE_STARTED
-	ChallengeForfieted = constants.CHALLENGE_FORFEITED
 	ChallengeEnded     = constants.CHALLENGE_ENDED
 	ChallengeAbandon   = constants.CHALLENGE_ABANDON
 )
